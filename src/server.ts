@@ -1,3 +1,4 @@
+import "dotenv/config"
 import Fastify from "fastify"
 import { registerRoutes } from "./api/routes"
 import { startIndexer } from "./workers/indexer"
