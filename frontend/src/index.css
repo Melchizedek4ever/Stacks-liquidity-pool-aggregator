@@ -1,14 +1,21 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @plugin "@tailwindcss/forms";
 
 @theme {
   --font-sans: "IBM Plex Sans", sans-serif;
+  --color-bg: #050b16;
+  --color-surface: #0c1320;
+  --color-surface-2: #111b2b;
+  --color-border: #1d2a3f;
+  --color-text: #dce8ff;
+  --color-muted: #8ea7c8;
+  --color-accent: #2f7df6;
 }
 
 :root {
-  color: #0f172a;
-  background: #fffaf2;
+  color: var(--color-text);
+  background: var(--color-bg);
   font-family: "IBM Plex Sans", sans-serif;
   text-rendering: optimizeLegibility;
   font-synthesis: none;
@@ -23,6 +30,11 @@ html {
 body {
   margin: 0;
   min-width: 320px;
+  background:
+    radial-gradient(circle at 15% -20%, rgba(47, 125, 246, 0.2), transparent 35%),
+    radial-gradient(circle at 85% 0%, rgba(14, 165, 233, 0.14), transparent 30%),
+    linear-gradient(180deg, #040a14 0%, #050b16 50%, #060d1a 100%);
+  color: var(--color-text);
 }
 
 * {
@@ -31,4 +43,8 @@ body {
 
 button {
   font: inherit;
+}
+
+#root {
+  min-height: 100vh;
 }

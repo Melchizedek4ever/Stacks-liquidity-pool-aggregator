@@ -12,10 +12,10 @@ import { Pool } from "../types/pool";
 import { formatCurrency, truncateMiddle } from "../utils/format";
 
 const sourceColorMap = {
-  bitflow: "#4f46e5",
-  velar: "#7c3aed",
-  alex: "#f97316",
-  unknown: "#64748b"
+  bitflow: "#2f7df6",
+  velar: "#5297ff",
+  alex: "#37b6ff",
+  unknown: "#4a6488"
 };
 
 export function PoolsBarChart({ pools }: { pools: Pool[] }) {
@@ -28,15 +28,15 @@ export function PoolsBarChart({ pools }: { pools: Pool[] }) {
     }));
 
   return (
-    <section className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+    <section className="rounded-3xl border border-[#1d2a3f] bg-[linear-gradient(180deg,#0e1625_0%,#090f1a_100%)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
       <div className="mb-6 flex flex-col gap-2">
-        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#7f9abf]">
           Market Snapshot
         </p>
-        <h2 className="font-['Space_Grotesk',sans-serif] text-2xl font-bold text-slate-950">
+        <h2 className="font-['Manrope',sans-serif] text-2xl font-bold text-[#f3f8ff]">
           Top 10 pools by liquidity
         </h2>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-[#a3b8d5]">
           Color-coded by DEX so the liquidity leaders are easy to compare at a glance.
         </p>
       </div>
@@ -44,29 +44,37 @@ export function PoolsBarChart({ pools }: { pools: Pool[] }) {
       <div className="h-[360px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={topPools} margin={{ top: 16, right: 16, left: 0, bottom: 16 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1d2a3f" vertical={false} />
             <XAxis
               dataKey="label"
               tickLine={false}
               axisLine={false}
-              tick={{ fill: "#475569", fontSize: 12 }}
+              tick={{ fill: "#8ea7c8", fontSize: 12 }}
             />
             <YAxis
               tickFormatter={(value) => formatCurrency(value)}
               tickLine={false}
               axisLine={false}
-              tick={{ fill: "#475569", fontSize: 12 }}
+              tick={{ fill: "#8ea7c8", fontSize: 12 }}
               width={95}
             />
             <Tooltip
-              cursor={{ fill: "rgba(148,163,184,0.08)" }}
+              contentStyle={{
+                backgroundColor: "#101b2d",
+                border: "1px solid #2c3f5f",
+                borderRadius: "14px",
+                color: "#dce8ff"
+              }}
+              labelStyle={{ color: "#dce8ff", fontWeight: 600 }}
+              itemStyle={{ color: "#c4d7f4" }}
+              cursor={{ fill: "rgba(47, 125, 246, 0.11)" }}
               formatter={(value: number) => [formatCurrency(value), "Liquidity"]}
               labelFormatter={(_, payload) => {
                 const pool = payload?.[0]?.payload as Pool | undefined;
                 return pool ? `${pool.token0}/${pool.token1} • ${pool.source}` : "";
               }}
             />
-            <Bar dataKey="liquidityUSD" radius={[12, 12, 4, 4]} animationDuration={700}>
+            <Bar dataKey="liquidityUSD" radius={[10, 10, 4, 4]} animationDuration={700}>
               {topPools.map((pool) => (
                 <Cell key={pool.id} fill={sourceColorMap[pool.source]} />
               ))}

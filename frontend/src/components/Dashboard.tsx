@@ -13,8 +13,8 @@ export function Dashboard() {
   const totalVolume24h = pools.reduce((sum, pool) => sum + pool.volume24h, 0);
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#fffaf2_0%,#f8fbff_35%,#eef2ff_100%)] text-slate-900">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+    <main className="min-h-screen text-[#dce8ff]">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <Header
           lastUpdatedLabel={formatTimestamp(lastUpdated)}
           isRefreshing={isRefreshing}
@@ -26,34 +26,34 @@ export function Dashboard() {
           <KpiCard
             label="Total Liquidity"
             value={formatCurrency(totalLiquidity)}
-            accent="bg-[#4f46e5]"
+            accent="bg-[#2f7df6]"
             helper="Combined TVL across all indexed Stacks pools."
           />
           <KpiCard
             label="24h Volume"
             value={formatCurrency(totalVolume24h)}
-            accent="bg-[#f97316]"
+            accent="bg-[#38bdf8]"
             helper="Rolling 24 hour turnover from the current dataset."
           />
           <KpiCard
             label="Pools Indexed"
             value={formatCompactNumber(pools.length)}
-            accent="bg-[#7c3aed]"
+            accent="bg-[#60a5fa]"
             helper="Active rows available for ranking and table sorting."
           />
         </section>
 
-        <section className="grid gap-8 xl:grid-cols-[1.2fr_0.8fr]">
+        <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
           <PoolsBarChart pools={pools} />
 
-          <aside className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+          <aside className="rounded-3xl border border-[#1d2a3f] bg-[linear-gradient(160deg,#0e1727_0%,#0a111d_70%)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#7f9abf]">
               Live Feed
             </p>
-            <h2 className="mt-2 font-['Space_Grotesk',sans-serif] text-2xl font-bold text-slate-950">
+            <h2 className="mt-2 font-['Manrope',sans-serif] text-2xl font-bold text-[#f3f8ff]">
               Dashboard status
             </h2>
-            <div className="mt-6 space-y-4 text-sm leading-7 text-slate-700">
+            <div className="mt-6 space-y-4 text-sm leading-7 text-[#adc0dc]">
               <p>
                 The dashboard polls the aggregator every 60 seconds and preserves the
                 most recent successful payload if a refresh fails.
