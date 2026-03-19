@@ -46,14 +46,14 @@ export function Dashboard() {
         <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
           <PoolsBarChart pools={pools} />
 
-          <aside className="rounded-3xl border border-[#1d2a3f] bg-[linear-gradient(160deg,#0e1727_0%,#0a111d_70%)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#7f9abf]">
+          <aside className="rounded-3xl border border-[#3a5276] bg-[linear-gradient(160deg,#1a2c46_0%,#13243c_70%)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#c7d8ee]">
               Live Feed
             </p>
             <h2 className="mt-2 font-['Manrope',sans-serif] text-2xl font-bold text-[#f3f8ff]">
               Dashboard status
             </h2>
-            <div className="mt-6 space-y-4 text-sm leading-7 text-[#adc0dc]">
+            <div className="mt-6 space-y-4 text-sm leading-7 text-[#d6e4f8]">
               <p>
                 The dashboard polls the aggregator every 60 seconds and preserves the
                 most recent successful payload if a refresh fails.

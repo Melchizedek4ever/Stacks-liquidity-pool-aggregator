@@ -1,10 +1,10 @@
 import { PoolSource } from "../types/pool";
 
 const sourceStyles: Record<PoolSource, string> = {
-  bitflow: "bg-[#2f7df6]/20 text-[#93c5fd] ring-[#2f7df6]/30",
-  velar: "bg-[#5297ff]/20 text-[#bfdbfe] ring-[#5297ff]/30",
-  alex: "bg-[#37b6ff]/20 text-[#bae6fd] ring-[#37b6ff]/30",
-  unknown: "bg-[#3f587a]/30 text-[#9bb3d4] ring-[#4a6488]/35"
+  bitflow: "bg-[#2f7df6]/30 text-[#dbeafe] ring-[#2f7df6]/45",
+  velar: "bg-[#5297ff]/30 text-[#eff6ff] ring-[#5297ff]/45",
+  alex: "bg-[#37b6ff]/30 text-[#f0f9ff] ring-[#37b6ff]/45",
+  unknown: "bg-[#4d668d]/35 text-[#e2edff] ring-[#6d87af]/45"
 };
 
 export function SourceBadge({ source }: { source: PoolSource }) {

@@ -28,15 +28,15 @@ export function PoolsBarChart({ pools }: { pools: Pool[] }) {
     }));
 
   return (
-    <section className="rounded-3xl border border-[#1d2a3f] bg-[linear-gradient(180deg,#0e1625_0%,#090f1a_100%)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+    <section className="rounded-3xl border border-[#3a5276] bg-[linear-gradient(180deg,#182a44_0%,#122239_100%)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
       <div className="mb-6 flex flex-col gap-2">
-        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#7f9abf]">
+        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#c7d8ee]">
           Market Snapshot
         </p>
         <h2 className="font-['Manrope',sans-serif] text-2xl font-bold text-[#f3f8ff]">
           Top 10 pools by liquidity
         </h2>
-        <p className="text-sm text-[#a3b8d5]">
+        <p className="text-sm text-[#d3e1f5]">
           Color-coded by DEX so the liquidity leaders are easy to compare at a glance.
         </p>
       </div>
@@ -44,18 +44,18 @@ export function PoolsBarChart({ pools }: { pools: Pool[] }) {
       <div className="h-[360px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={topPools} margin={{ top: 16, right: 16, left: 0, bottom: 16 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1d2a3f" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#2f4568" vertical={false} />
             <XAxis
               dataKey="label"
               tickLine={false}
               axisLine={false}
-              tick={{ fill: "#8ea7c8", fontSize: 12 }}
+              tick={{ fill: "#d6e4f8", fontSize: 12 }}
             />
             <YAxis
               tickFormatter={(value) => formatCurrency(value)}
               tickLine={false}
               axisLine={false}
-              tick={{ fill: "#8ea7c8", fontSize: 12 }}
+              tick={{ fill: "#d6e4f8", fontSize: 12 }}
               width={95}
             />
             <Tooltip

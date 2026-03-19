@@ -14,7 +14,7 @@
 }
 
 :root {
-  color: var(--color-text);
+  color: #ecf4ff;
   background: var(--color-bg);
   font-family: "IBM Plex Sans", sans-serif;
   text-rendering: optimizeLegibility;
@@ -31,10 +31,10 @@ body {
   margin: 0;
   min-width: 320px;
   background:
-    radial-gradient(circle at 15% -20%, rgba(47, 125, 246, 0.2), transparent 35%),
-    radial-gradient(circle at 85% 0%, rgba(14, 165, 233, 0.14), transparent 30%),
-    linear-gradient(180deg, #040a14 0%, #050b16 50%, #060d1a 100%);
-  color: var(--color-text);
+    radial-gradient(circle at 15% -20%, rgba(47, 125, 246, 0.3), transparent 35%),
+    radial-gradient(circle at 85% 0%, rgba(14, 165, 233, 0.2), transparent 30%),
+    linear-gradient(180deg, #091223 0%, #0b1528 50%, #0d182b 100%);
+  color: #ecf4ff;
 }
 
 * {
