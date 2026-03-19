@@ -2,13 +2,13 @@ import { DexAdapter } from "./types"
 import { fetchJsonWithRetry } from "../utils/retry"
 import { mapAdapterPools, toPoolArray } from "./adapterUtils"
 
-const ALEX_API_URL = process.env.ALEX_API_URL
-
 export const alexAdapter: DexAdapter = {
   name: "alex",
   async fetchPools() {
+    const ALEX_API_URL = process.env.ALEX_API_URL
     if (!ALEX_API_URL) {
-      throw new Error("ALEX_API_URL is not configured")
+      console.warn("ALEX_API_URL is not configured; skipping alex adapter")
+      return []
     }
 
     const data = await fetchJsonWithRetry<unknown>(ALEX_API_URL, undefined, {

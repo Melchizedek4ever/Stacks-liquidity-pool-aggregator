@@ -2,13 +2,13 @@ import { DexAdapter } from "./types"
 import { fetchJsonWithRetry } from "../utils/retry"
 import { mapAdapterPools, toPoolArray } from "./adapterUtils"
 
-const VELAR_API_URL = process.env.VELAR_API_URL
-
 export const velarAdapter: DexAdapter = {
   name: "velar",
   async fetchPools() {
+    const VELAR_API_URL = process.env.VELAR_API_URL
     if (!VELAR_API_URL) {
-      throw new Error("VELAR_API_URL is not configured")
+      console.warn("VELAR_API_URL is not configured; skipping velar adapter")
+      return []
     }
 
     const data = await fetchJsonWithRetry<unknown>(VELAR_API_URL, undefined, {
