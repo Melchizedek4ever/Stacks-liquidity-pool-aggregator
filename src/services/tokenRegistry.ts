@@ -9,20 +9,32 @@ interface RegistryCache {
 const CACHE_TTL_MS = 5 * 60 * 1000
 let registryCache: RegistryCache | null = null
 
-const normalizeKey = (value: string) => value.trim().toLowerCase()
+const normalizeKey = (value?: string | null): string | null => {
+  if (typeof value !== "string") return null
+  const normalized = value.trim().toLowerCase()
+  return normalized.length ? normalized : null
+}
 
 const buildRegistry = async (): Promise<RegistryCache> => {
   const [tokens, aliases] = await Promise.all([fetchTokens(), fetchTokenAliases()])
 
   const tokensById = new Map<string, TokenRecord>()
   for (const token of tokens) {
-    tokensById.set(normalizeKey(token.id), token)
+    const tokenId = normalizeKey(token.id)
+    if (!tokenId) continue
+    tokensById.set(tokenId, token)
   }
 
   const aliasMap = new Map<string, string>()
   for (const alias of aliases) {
-    const key = `${normalizeKey(alias.dex)}:${normalizeKey(alias.alias)}`
-    aliasMap.set(key, normalizeKey(alias.token_id))
+    const dexKey = normalizeKey(alias.dex)
+    const aliasKeyPart = normalizeKey(alias.alias)
+    const tokenId = normalizeKey(alias.token_id)
+
+    if (!dexKey || !aliasKeyPart || !tokenId) continue
+
+    const key = `${dexKey}:${aliasKeyPart}`
+    aliasMap.set(key, tokenId)
   }
 
   return {
@@ -42,11 +54,14 @@ const getRegistry = async (): Promise<RegistryCache> => {
 
 export async function normalizeToken(
   dex: string,
-  tokenIdentifier: string
+  tokenIdentifier?: string | null
 ): Promise<string | null> {
-  const registry = await getRegistry()
   const dexKey = normalizeKey(dex)
   const tokenKey = normalizeKey(tokenIdentifier)
+
+  if (!dexKey || !tokenKey) return null
+
+  const registry = await getRegistry()
   const aliasKey = `${dexKey}:${tokenKey}`
 
   const aliasTokenId = registry.aliases.get(aliasKey)
@@ -59,16 +74,18 @@ export async function normalizeToken(
 
 export async function normalizePoolTokens(pool: {
   dex: string
-  tokenA: string
-  tokenB: string
-}): Promise<{ tokenA: string; tokenB: string } | null> {
-  const [tokenA, tokenB] = await Promise.all([
-    normalizeToken(pool.dex, pool.tokenA),
-    normalizeToken(pool.dex, pool.tokenB)
+  token0?: string | null
+  token1?: string | null
+}): Promise<{ token0: string; token1: string } | null> {
+  if (!pool?.dex || !pool?.token0 || !pool?.token1) return null
+
+  const [token0, token1] = await Promise.all([
+    normalizeToken(pool.dex, pool.token0),
+    normalizeToken(pool.dex, pool.token1)
   ])
 
-  if (!tokenA || !tokenB) return null
-  return { tokenA, tokenB }
+  if (!token0 || !token1) return null
+  return { token0, token1 }
 }
 
 export async function listTokens(): Promise<TokenRecord[]> {
