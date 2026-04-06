@@ -1,13 +1,14 @@
-import { DexAdapter, Pool } from "./types";
+import { DexAdapter } from "./types";
+import { Pool } from "../types/pool";
 import { fetchJsonWithRetry } from "../utils/retry";
 
 const BITFLOW_PUBLIC_API_URL =
   process.env.BITFLOW_PUBLIC_API_URL ||
   "https://bitflow-sdk-api-gateway-7owjsmt8.uc.gateway.dev";
 
-const BITFLOW_BFF_API_URL =
-  process.env.BITFLOW_BFF_API_URL ||
-  "https://bff.bitflowapis.finance";
+const BITFLOW_API_KEY =
+  process.env.BITFLOW_API_KEY ||
+  "AIzaSyBHtCgb9L80ch1jH0DBMWtVvNzdnGX4jzk";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -22,25 +23,29 @@ function getMockPools(): Pool[] {
   return [
     {
       dex: "bitflow",
-      poolId: "mock-bitflow-stx-sbtc",
-      token0: "STX",
-      token1: "sBTC",
-      reserve0: 1_000_000,
-      reserve1: 500,
-      fee: 0.003,
-      source: "mock",
+      tokenA: "STX",
+      tokenB: "sBTC",
+      liquidity_usd: 1_250_000,
+      apy: 0,
+      volume_24h: 75_000,
+      last_updated: Date.now(),
     },
     {
       dex: "bitflow",
-      poolId: "mock-bitflow-stx-usda",
-      token0: "STX",
-      token1: "USDA",
-      reserve0: 750_000,
-      reserve1: 250_000,
-      fee: 0.003,
-      source: "mock",
+      tokenA: "STX",
+      tokenB: "USDA",
+      liquidity_usd: 850_000,
+      apy: 0,
+      volume_24h: 42_000,
+      last_updated: Date.now(),
     },
   ];
+}
+
+function previewPayload(label: string, payload: any) {
+  console.log(`\n[bitflow] RAW PAYLOAD FROM ${label}`);
+  console.dir(payload, { depth: 5, maxArrayLength: 20 });
+  console.log(`[bitflow] END PAYLOAD ${label}\n`);
 }
 
 function safeNumber(value: unknown, fallback = 0): number {
@@ -61,45 +66,32 @@ function normalizeBitflowPools(payload: unknown): Pool[] {
     if (!Array.isArray(candidate)) continue;
 
     const pools: Pool[] = candidate
-      .map((item: any, index: number): Pool | null => {
-        const token0 =
-          item?.token0 ||
-          item?.tokenA ||
-          item?.baseToken ||
-          item?.token_x ||
-          item?.asset0 ||
-          item?.symbol0;
+      .map((item: any): Pool | null => {
+        const tokenA = item?.base_currency;
+        const tokenB = item?.target_currency;
 
-        const token1 =
-          item?.token1 ||
-          item?.tokenB ||
-          item?.quoteToken ||
-          item?.token_y ||
-          item?.asset1 ||
-          item?.symbol1;
-
-        if (!token0 || !token1) return null;
+        if (!tokenA || !tokenB) return null;
 
         return {
           dex: "bitflow",
-          poolId:
-            item?.poolId ||
-            item?.pool_id ||
-            item?.id ||
-            `bitflow-pool-${index}`,
-          token0: String(token0),
-          token1: String(token1),
-          reserve0: safeNumber(
-            item?.reserve0 ?? item?.reserveA ?? item?.liquidity0 ?? item?.x
-          ),
-          reserve1: safeNumber(
-            item?.reserve1 ?? item?.reserveB ?? item?.liquidity1 ?? item?.y
-          ),
-          fee: safeNumber(item?.fee ?? item?.feeBps ?? item?.swapFee, 0.003),
-          source: "api",
+          tokenA: String(tokenA),
+          tokenB: String(tokenB),
+          liquidity_usd: safeNumber(item?.liquidity_in_usd, 0),
+
+          // Bitflow ticker doesn't expose APY directly
+          apy: 0,
+
+          // Best available proxy for activity right now
+          volume_24h: safeNumber(item?.base_volume, 0),
+
+          // Use last trade time if available, else now
+          last_updated: item?.last_trade_time
+            ? safeNumber(item.last_trade_time) * 1000
+            : Date.now(),
         };
       })
-      .filter((pool): pool is Pool => pool !== null);
+      .filter((pool): pool is Pool => pool !== null)
+      .filter((pool) => pool.liquidity_usd > 0);
 
     if (pools.length > 0) return pools;
   }
@@ -110,10 +102,17 @@ function normalizeBitflowPools(payload: unknown): Pool[] {
 async function fetchCandidate(
   url: string
 ): Promise<{ pools: Pool[]; meta: CandidateResult }> {
-  console.log(`[bitflow] requesting ${url}`);
+  const urlWithApiKey = url.includes("?")
+    ? `${url}&api_key=${BITFLOW_API_KEY}`
+    : `${url}?api_key=${BITFLOW_API_KEY}`;
+
+  console.log(`[bitflow] requesting ${urlWithApiKey}`);
 
   try {
-    const payload = await fetchJsonWithRetry(url);
+    const payload = await fetchJsonWithRetry(urlWithApiKey);
+
+    previewPayload(urlWithApiKey, payload);
+
     const pools = normalizeBitflowPools(payload);
 
     if (pools.length > 0) {
@@ -162,11 +161,7 @@ export const bitflowAdapter: DexAdapter = {
   name: "bitflow",
 
   async fetchPools(): Promise<Pool[]> {
-    const candidates = [
-      `${BITFLOW_BFF_API_URL}/api/app/v1/pools/metrics`,
-      `${BITFLOW_BFF_API_URL}/api/app/v1/pools/categories`,
-      `${BITFLOW_PUBLIC_API_URL}/ticker`,
-    ];
+    const candidates = [`${BITFLOW_PUBLIC_API_URL}/ticker`];
 
     const attempted: CandidateResult[] = [];
 
