@@ -7,9 +7,24 @@ export async function savePools(pools: Pool[]): Promise<void> {
     return
   }
 
+  // Deduplicate pools by (dex, tokenA, tokenB), keeping the one with highest liquidity
+  const poolMap = new Map<string, Pool>()
+  
+  for (const pool of pools) {
+    const key = `${pool.dex}:${pool.tokenA}:${pool.tokenB}`
+    const existing = poolMap.get(key)
+    
+    if (!existing || pool.liquidity_usd > existing.liquidity_usd) {
+      poolMap.set(key, pool)
+    }
+  }
+
+  const deduped = Array.from(poolMap.values())
+  console.info(`Deduped ${pools.length} pools → ${deduped.length} unique pools`)
+
   try {
-    await upsertPools(pools)
-    console.info(`Persisted ${pools.length} pools`)
+    await upsertPools(deduped)
+    console.info(`Persisted ${deduped.length} pools`)
   } catch (error) {
     console.error("Failed to persist pools", error)
   }

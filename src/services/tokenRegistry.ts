@@ -92,3 +92,50 @@ export async function listTokens(): Promise<TokenRecord[]> {
   const registry = await getRegistry()
   return Array.from(registry.tokensById.values())
 }
+
+export interface CanonicalToken {
+  id: string
+  address: string | null
+  contract: string | null
+  symbol: string
+  decimals: number
+  isNative: boolean
+  verified: boolean
+  source: "registry" | "cache" | "fallback"
+}
+
+export const TOKEN_REGISTRY: Record<string, CanonicalToken> = {
+  STX: {
+    id: "STX",
+    address: null,
+    contract: null,
+    symbol: "STX",
+    decimals: 6,
+    isNative: true,
+    verified: true,
+    source: "registry",
+  },
+
+  // Add known tokens gradually
+  "SP3Y2ZSH8P7D50B0VBTSX11S7XSG24M1VB9YFQA4K.token-aeusdc": {
+    id: "SP3Y2ZSH8P7D50B0VBTSX11S7XSG24M1VB9YFQA4K.token-aeusdc",
+    address: "SP3Y2ZSH8P7D50B0VBTSX11S7XSG24M1VB9YFQA4K",
+    contract: "token-aeusdc",
+    symbol: "aeUSDC",
+    decimals: 6,
+    isNative: false,
+    verified: true,
+    source: "registry",
+  },
+
+  "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-susdt": {
+    id: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-susdt",
+    address: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9",
+    contract: "token-susdt",
+    symbol: "sUSDT",
+    decimals: 6,
+    isNative: false,
+    verified: true,
+    source: "registry",
+  },
+}

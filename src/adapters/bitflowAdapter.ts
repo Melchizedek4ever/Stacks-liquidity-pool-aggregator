@@ -6,9 +6,7 @@ const BITFLOW_PUBLIC_API_URL =
   process.env.BITFLOW_PUBLIC_API_URL ||
   "https://bitflow-sdk-api-gateway-7owjsmt8.uc.gateway.dev";
 
-const BITFLOW_API_KEY =
-  process.env.BITFLOW_API_KEY ||
-  "AIzaSyBHtCgb9L80ch1jH0DBMWtVvNzdnGX4jzk";
+const BITFLOW_API_KEY = process.env.BITFLOW_API_KEY;
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -74,6 +72,7 @@ function normalizeBitflowPools(payload: unknown): Pool[] {
 
         return {
           dex: "bitflow",
+          pool_id: item?.pool_id,
           tokenA: String(tokenA),
           tokenB: String(tokenB),
           liquidity_usd: safeNumber(item?.liquidity_in_usd, 0),
@@ -102,9 +101,12 @@ function normalizeBitflowPools(payload: unknown): Pool[] {
 async function fetchCandidate(
   url: string
 ): Promise<{ pools: Pool[]; meta: CandidateResult }> {
-  const urlWithApiKey = url.includes("?")
-    ? `${url}&api_key=${BITFLOW_API_KEY}`
-    : `${url}?api_key=${BITFLOW_API_KEY}`;
+  let urlWithApiKey = url;
+  if (BITFLOW_API_KEY) {
+    urlWithApiKey = url.includes("?")
+      ? `${url}&api_key=${BITFLOW_API_KEY}`
+      : `${url}?api_key=${BITFLOW_API_KEY}`;
+  }
 
   console.log(`[bitflow] requesting ${urlWithApiKey}`);
 
