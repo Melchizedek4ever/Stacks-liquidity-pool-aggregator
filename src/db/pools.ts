@@ -5,6 +5,7 @@ import { toTimestamp } from "../utils/time"
 
 interface PoolRow {
   dex: string
+  pool_id?: string | null
   token_a: string
   token_b: string
   liquidity_usd: number | string
@@ -16,6 +17,7 @@ interface PoolRow {
 const mapRowToPool = (row: PoolRow): Pool => {
   return {
     dex: row.dex,
+    pool_id: row.pool_id ?? undefined,
     tokenA: row.token_a,
     tokenB: row.token_b,
     liquidity_usd: toNumber(row.liquidity_usd) ?? 0,
@@ -30,6 +32,7 @@ export async function upsertPools(pools: Pool[]): Promise<void> {
 
   const rows = pools.map((pool) => ({
     dex: pool.dex,
+    pool_id: pool.pool_id ?? null,
     token_a: pool.tokenA,
     token_b: pool.tokenB,
     liquidity_usd: pool.liquidity_usd,
@@ -38,12 +41,36 @@ export async function upsertPools(pools: Pool[]): Promise<void> {
     last_updated: new Date(pool.last_updated).toISOString()
   }))
 
-  const { error } = await supabase
+  const { error: modernError } = await supabase
     .from("pools")
-    .upsert(rows, { onConflict: "dex,token_a,token_b" })
+    .upsert(rows, { onConflict: "dex,pool_id" })
 
-  if (error) {
-    throw error
+  if (!modernError) return
+
+  if (modernError.code === "42501") {
+    console.error(
+      "[db] pools upsert blocked by RLS (code 42501). Configure Supabase policy for INSERT/UPDATE on pools, or run this backend with service_role key."
+    )
+    throw modernError
+  }
+
+  console.warn(
+    `[db] modern pool upsert failed; falling back to legacy key. reason=${modernError.message}`
+  )
+
+  for (const row of rows) {
+    const { error: legacyError } = await supabase
+      .from("pools")
+      .upsert(row, { onConflict: "dex,token_a,token_b" })
+
+    if (legacyError) {
+      if (legacyError.code === "42501") {
+        console.error(
+          "[db] legacy pools upsert blocked by RLS (code 42501). Configure Supabase policy for INSERT/UPDATE on pools, or run this backend with service_role key."
+        )
+      }
+      throw legacyError
+    }
   }
 }
 

@@ -21,6 +21,7 @@ export class DatabaseService {
       // Prepare pools for insertion (remove score field, use last_updated as timestamp)
       const poolsToSave = pools.map((pool) => ({
         dex: pool.dex,
+        pool_id: pool.pool_id ?? null,
         token_a: pool.tokenA,
         token_b: pool.tokenB,
         liquidity_usd: pool.liquidity_usd,
@@ -29,14 +30,28 @@ export class DatabaseService {
         last_updated: new Date(pool.last_updated).toISOString(),
       }));
 
-      const { error } = await this.supabase
+      const { error: modernError } = await this.supabase
         .from('pools')
         .upsert(poolsToSave, {
-          onConflict: 'dex, token_a, token_b',
+          onConflict: 'dex,pool_id',
         });
 
-      if (error) {
-        throw error;
+      if (modernError) {
+        console.warn(
+          `[db] modern pool upsert failed; falling back to legacy key. reason=${modernError.message}`,
+        );
+
+        for (const row of poolsToSave) {
+          const { error: legacyError } = await this.supabase
+            .from('pools')
+            .upsert(row, {
+              onConflict: 'dex, token_a, token_b',
+            });
+
+          if (legacyError) {
+            throw legacyError;
+          }
+        }
       }
 
       console.log(`Saved ${pools.length} pools to database`);
@@ -66,6 +81,7 @@ export class DatabaseService {
 
       return data.map((row) => ({
         dex: row.dex,
+        pool_id: row.pool_id ?? undefined,
         tokenA: row.token_a,
         tokenB: row.token_b,
         liquidity_usd: row.liquidity_usd,
@@ -100,6 +116,7 @@ export class DatabaseService {
 
       return data.map((row) => ({
         dex: row.dex,
+        pool_id: row.pool_id ?? undefined,
         tokenA: row.token_a,
         tokenB: row.token_b,
         liquidity_usd: row.liquidity_usd,
@@ -134,6 +151,7 @@ export class DatabaseService {
 
       return data.map((row) => ({
         dex: row.dex,
+        pool_id: row.pool_id ?? undefined,
         tokenA: row.token_a,
         tokenB: row.token_b,
         liquidity_usd: row.liquidity_usd,
@@ -173,6 +191,7 @@ export class DatabaseService {
 
       return data.map((row) => ({
         dex: row.dex,
+        pool_id: row.pool_id ?? undefined,
         tokenA: row.token_a,
         tokenB: row.token_b,
         liquidity_usd: row.liquidity_usd,

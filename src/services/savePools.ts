@@ -7,14 +7,16 @@ export async function savePools(pools: Pool[]): Promise<void> {
     return
   }
 
-  // Deduplicate pools by (dex, tokenA, tokenB), keeping the one with highest liquidity
+  // Deduplicate by pool_id when present; fallback to pair key for pools without pool_id.
   const poolMap = new Map<string, Pool>()
   
   for (const pool of pools) {
-    const key = `${pool.dex}:${pool.tokenA}:${pool.tokenB}`
+    const key = pool.pool_id
+      ? `pool-id:${pool.pool_id}`
+      : `pair:${pool.dex}:${pool.tokenA}:${pool.tokenB}`
     const existing = poolMap.get(key)
     
-    if (!existing || pool.liquidity_usd > existing.liquidity_usd) {
+    if (!existing) {
       poolMap.set(key, pool)
     }
   }

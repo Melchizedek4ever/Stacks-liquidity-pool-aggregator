@@ -18,7 +18,7 @@ cp .env.example .env
 
 **Required variables:**
 - `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_KEY`: Your Supabase anon key
+- `SUPABASE_KEY`: Your Supabase **service_role** key (recommended for this backend indexer)
 - `PORT`: API server port (default: 3000)
 - `NODE_ENV`: Environment (development/production)
 - `UPDATE_INTERVAL`: Pool update frequency in ms (default: 60000)

@@ -4,7 +4,7 @@ import { normalizePoolTokens } from "./tokenRegistry"
 
 import { resolveToken, logUnknownTokens } from "./tokenResolver"
 import { Pool } from "../types/pool"
-import { validatePool } from "../utils/validatePool"
+import { getPoolValidationReason } from "../utils/validatePool"
 
 export async function aggregatePools(): Promise<Pool[]> {
   const settledResults = await Promise.allSettled(
@@ -27,14 +27,19 @@ export async function aggregatePools(): Promise<Pool[]> {
 
     for (const pool of pools) {
       try {
-        if (!pool.tokenA || !pool.tokenB) continue
+        if (!pool.tokenA || !pool.tokenB) {
+          console.warn(
+            `[aggregator] Filtered pool (${adapterName}) pool_id=${pool.pool_id ?? "n/a"} reason=missing tokenA or tokenB tokenA=${String(pool.tokenA)} tokenB=${String(pool.tokenB)}`
+          )
+          continue
+        }
 
         const tokenA = await resolveToken(pool.tokenA)
         const tokenB = await resolveToken(pool.tokenB)
 
         if (!tokenA || !tokenB) {
           console.warn(
-            `[aggregator] Skipping pool due to unknown token: ${pool.tokenA}/${pool.tokenB}`
+            `[aggregator] Filtered pool (${adapterName}) pool_id=${pool.pool_id ?? "n/a"} reason=unknown token tokenA=${pool.tokenA} tokenB=${pool.tokenB}`
           )
           continue
         }
@@ -45,7 +50,13 @@ export async function aggregatePools(): Promise<Pool[]> {
           tokenB: tokenB.id,
         }
 
-        if (!validatePool(normalizedPool)) continue
+        const reason = getPoolValidationReason(normalizedPool)
+        if (reason) {
+          console.warn(
+            `[aggregator] Filtered pool (${adapterName}) pool_id=${normalizedPool.pool_id ?? "n/a"} reason=${reason} tokenA=${normalizedPool.tokenA} tokenB=${normalizedPool.tokenB} liquidity_usd=${normalizedPool.liquidity_usd}`
+          )
+          continue
+        }
 
         collected.push(normalizedPool)
       } catch (err) {
