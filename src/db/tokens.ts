@@ -5,6 +5,7 @@ export interface TokenRecord {
   symbol: string
   name: string
   decimals: number
+  verified?: boolean
 }
 
 export interface TokenAliasRecord {

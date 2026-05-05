@@ -1,103 +1,103 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resolveToken = resolveToken;
+exports.resolveToken = void 0;
+exports.normalizeToken = normalizeToken;
+exports.isVerifiedToken = isVerifiedToken;
 exports.logUnknownTokens = logUnknownTokens;
 const tokenRegistry_1 = require("./tokenRegistry");
 const tokenCache = new Map();
-const unknownTokens = new Set();
-// Normalize raw input
+const autoRegisteredTokens = new Set();
 function normalizeRawToken(raw) {
-    if (!raw)
+    if (typeof raw !== "string")
         return null;
-    if (raw === "Stacks")
+    let normalized = raw.trim();
+    if (!normalized)
+        return null;
+    if (normalized === "Stacks")
         return "STX";
-    if (raw.startsWith("Stacks/")) {
-        raw = raw.replace("Stacks/", "");
+    if (normalized.startsWith("Stacks/")) {
+        normalized = normalized.replace("Stacks/", "");
     }
-    return raw.trim();
+    return normalized.trim() || null;
 }
-// Safe parser
 function safeParse(token) {
     const parts = token.split(".");
-    if (parts.length !== 2)
+    if (parts.length !== 2 || !parts[0] || !parts[1])
         return null;
     return {
         address: parts[0],
         contract: parts[1],
     };
 }
-// Fallback resolver (creates token from contract address)
-async function resolveFromFallback(parsed) {
-    try {
-        // Try to fetch contract details
-        const res = await fetch(`https://stacks-node-api.mainnet.stacks.co/v2/contracts/interface/${parsed.address}/${parsed.contract}`, { signal: AbortSignal.timeout(2000) });
-        if (res.ok) {
-            return {
-                id: `${parsed.address}.${parsed.contract}`,
-                address: parsed.address,
-                contract: parsed.contract,
-                symbol: parsed.contract,
-                decimals: 6,
-                isNative: false,
-                verified: true,
-                source: "fallback",
-            };
-        }
-    }
-    catch {
-        // API call failed, but we can still accept the contract address
-    }
-    // Create token from contract address even if API verification failed
+function deriveSymbol(token) {
+    const parsed = safeParse(token);
+    const rawSymbol = parsed?.contract ?? token;
+    const cleaned = rawSymbol
+        .split("/")
+        .pop()
+        .replace(/^wrapped[-_]/i, "")
+        .replace(/^token[-_]/i, "")
+        .replace(/[-_]?token$/i, "")
+        .replace(/[^a-zA-Z0-9]/g, "");
+    return cleaned || token;
+}
+function inferDecimals(symbol) {
+    const normalized = symbol.toLowerCase();
+    if (normalized.includes("btc"))
+        return 8;
+    return 6;
+}
+function createUnverifiedToken(identifier) {
+    const parsed = safeParse(identifier);
+    const symbol = deriveSymbol(identifier);
     return {
-        id: `${parsed.address}.${parsed.contract}`,
-        address: parsed.address,
-        contract: parsed.contract,
-        symbol: parsed.contract,
-        decimals: 6,
+        id: parsed ? `${parsed.address}.${parsed.contract}` : symbol.toLowerCase(),
+        address: parsed?.address ?? null,
+        contract: parsed?.contract ?? null,
+        symbol,
+        decimals: inferDecimals(symbol),
         isNative: false,
         verified: false,
         source: "fallback",
     };
 }
-// MAIN RESOLVER
-async function resolveToken(raw) {
+async function normalizeToken(raw) {
     const normalized = normalizeRawToken(raw);
     if (!normalized)
         return null;
-    // Cache
-    if (tokenCache.has(normalized)) {
-        return tokenCache.get(normalized);
+    const cacheKey = normalized.toLowerCase();
+    const cached = tokenCache.get(cacheKey);
+    if (cached)
+        return cached;
+    const registered = (0, tokenRegistry_1.getRegisteredToken)(normalized);
+    if (registered) {
+        tokenCache.set(cacheKey, registered);
+        return registered;
     }
-    // Registry
-    if (tokenRegistry_1.TOKEN_REGISTRY[normalized]) {
-        const token = tokenRegistry_1.TOKEN_REGISTRY[normalized];
-        tokenCache.set(normalized, token);
-        return token;
-    }
-    // Native STX
-    if (normalized === "STX") {
-        const token = tokenRegistry_1.TOKEN_REGISTRY["STX"];
-        tokenCache.set(normalized, token);
-        return token;
-    }
-    // Parse contract
-    const parsed = safeParse(normalized);
-    if (!parsed) {
-        unknownTokens.add(raw);
-        return null;
-    }
-    // Fallback
-    const fallback = await resolveFromFallback(parsed);
-    if (fallback) {
-        tokenCache.set(normalized, fallback);
-        return fallback;
-    }
-    unknownTokens.add(raw);
-    return null;
+    const fallback = (0, tokenRegistry_1.registerToken)(createUnverifiedToken(normalized));
+    tokenCache.set(cacheKey, fallback);
+    autoRegisteredTokens.add(fallback.id);
+    console.warn(JSON.stringify({
+        event: "unknown_token_auto_registered",
+        raw,
+        token_id: fallback.id,
+        symbol: fallback.symbol,
+        decimals: fallback.decimals,
+        verified: fallback.verified
+    }));
+    return fallback;
 }
-// Debug helper
+exports.resolveToken = normalizeToken;
+function isVerifiedToken(identifier) {
+    const token = identifier ? (0, tokenRegistry_1.getRegisteredToken)(identifier) ?? tokenRegistry_1.TOKEN_REGISTRY[identifier] : null;
+    return token?.verified === true;
+}
 function logUnknownTokens() {
-    if (unknownTokens.size > 0) {
-        console.warn("Unknown tokens:", [...unknownTokens]);
-    }
+    if (autoRegisteredTokens.size === 0)
+        return;
+    console.warn(JSON.stringify({
+        event: "unknown_tokens_summary",
+        count: autoRegisteredTokens.size,
+        token_ids: [...autoRegisteredTokens]
+    }));
 }

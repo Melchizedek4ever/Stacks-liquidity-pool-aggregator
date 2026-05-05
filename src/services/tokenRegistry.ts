@@ -105,13 +105,68 @@ export interface CanonicalToken {
 }
 
 export const TOKEN_REGISTRY: Record<string, CanonicalToken> = {
-  STX: {
-    id: "STX",
+  stx: {
+    id: "stx",
     address: null,
     contract: null,
     symbol: "STX",
     decimals: 6,
     isNative: true,
+    verified: true,
+    source: "registry",
+  },
+
+  STX: {
+    id: "stx",
+    address: null,
+    contract: null,
+    symbol: "STX",
+    decimals: 6,
+    isNative: true,
+    verified: true,
+    source: "registry",
+  },
+
+  sbtc: {
+    id: "sbtc",
+    address: null,
+    contract: null,
+    symbol: "sBTC",
+    decimals: 8,
+    isNative: false,
+    verified: true,
+    source: "registry",
+  },
+
+  sBTC: {
+    id: "sbtc",
+    address: null,
+    contract: null,
+    symbol: "sBTC",
+    decimals: 8,
+    isNative: false,
+    verified: true,
+    source: "registry",
+  },
+
+  usda: {
+    id: "usda",
+    address: null,
+    contract: null,
+    symbol: "USDA",
+    decimals: 6,
+    isNative: false,
+    verified: true,
+    source: "registry",
+  },
+
+  USDA: {
+    id: "usda",
+    address: null,
+    contract: null,
+    symbol: "USDA",
+    decimals: 6,
+    isNative: false,
     verified: true,
     source: "registry",
   },
@@ -138,4 +193,27 @@ export const TOKEN_REGISTRY: Record<string, CanonicalToken> = {
     verified: true,
     source: "registry",
   },
+}
+
+export function getRegisteredToken(identifier?: string | null): CanonicalToken | null {
+  const tokenKey = normalizeKey(identifier)
+  if (!tokenKey) return null
+
+  return (
+    TOKEN_REGISTRY[identifier as string] ??
+    TOKEN_REGISTRY[tokenKey] ??
+    TOKEN_REGISTRY[tokenKey.toUpperCase()] ??
+    Object.values(TOKEN_REGISTRY).find(
+      (token) =>
+        normalizeKey(token.id) === tokenKey || normalizeKey(token.symbol) === tokenKey
+    ) ??
+    null
+  )
+}
+
+export function registerToken(token: CanonicalToken): CanonicalToken {
+  TOKEN_REGISTRY[token.id] = token
+  TOKEN_REGISTRY[token.symbol] = token
+  TOKEN_REGISTRY[token.id.toLowerCase()] = token
+  return token
 }

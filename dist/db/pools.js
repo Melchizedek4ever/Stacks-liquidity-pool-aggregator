@@ -7,6 +7,7 @@ exports.fetchTopPoolsByApy = fetchTopPoolsByApy;
 const supabase_1 = require("./supabase");
 const number_1 = require("../utils/number");
 const time_1 = require("../utils/time");
+const retry_1 = require("../utils/retry");
 const mapRowToPool = (row) => {
     return {
         dex: row.dex,
@@ -37,12 +38,22 @@ async function upsertPools(pools) {
         .upsert(rows, { onConflict: "dex,pool_id" });
     if (!modernError)
         return;
+    if (modernError.code === "42501") {
+        console.error("[db] pools upsert blocked by RLS (code 42501). Configure Supabase policy for INSERT/UPDATE on pools, or run this backend with service_role key.");
+        throw modernError;
+    }
+    if ((0, retry_1.isTransientError)(modernError)) {
+        throw modernError;
+    }
     console.warn(`[db] modern pool upsert failed; falling back to legacy key. reason=${modernError.message}`);
     for (const row of rows) {
         const { error: legacyError } = await supabase_1.supabase
             .from("pools")
             .upsert(row, { onConflict: "dex,token_a,token_b" });
         if (legacyError) {
+            if (legacyError.code === "42501") {
+                console.error("[db] legacy pools upsert blocked by RLS (code 42501). Configure Supabase policy for INSERT/UPDATE on pools, or run this backend with service_role key.");
+            }
             throw legacyError;
         }
     }

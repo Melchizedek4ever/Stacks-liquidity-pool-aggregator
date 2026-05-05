@@ -24,8 +24,15 @@ export function startIndexer(): void {
     try {
       const pools = await aggregatePools()
       const ranked = rankPools(pools)
-      await savePools(pools)
-      console.info(`Indexed ${pools.length} pools, ranked ${ranked.length}`)
+      const persisted = await savePools(pools)
+      console.info(
+        JSON.stringify({
+          event: "indexer_run_complete",
+          validated: pools.length,
+          persisted,
+          ranked: ranked.length
+        })
+      )
     } catch (error) {
       console.error("Indexer run failed", error)
     } finally {

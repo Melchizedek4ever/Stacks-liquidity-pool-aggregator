@@ -6,6 +6,7 @@ exports.getTopPools = getTopPools;
 exports.getBestPools = getBestPools;
 const pools_1 = require("../db/pools");
 const ranking_1 = require("./ranking");
+const validatePool_1 = require("../utils/validatePool");
 async function getAllPools() {
     return (0, pools_1.fetchPools)();
 }
@@ -17,5 +18,5 @@ async function getTopPools(limit = 10) {
 }
 async function getBestPools() {
     const pools = await (0, pools_1.fetchPools)();
-    return (0, ranking_1.rankPools)(pools);
+    return (0, ranking_1.rankPools)(pools.filter(validatePool_1.validatePool));
 }

@@ -3,11 +3,13 @@ import { toNumber } from "../utils/number"
 import { toTimestamp } from "../utils/time"
 
 export interface RawPoolMapping {
+  pool_id?: unknown
   tokenA: unknown
   tokenB: unknown
   liquidity_usd: unknown
   apy: unknown
   volume_24h: unknown
+  last_trade_time?: unknown
   last_updated: unknown
 }
 
@@ -38,6 +40,7 @@ export function mapAdapterPools(
     const apy = toNumber(mapped.apy)
     const volume = toNumber(mapped.volume_24h)
     const lastUpdated = toTimestamp(mapped.last_updated) ?? Date.now()
+    const lastTradeTime = toTimestamp(mapped.last_trade_time) ?? lastUpdated
 
     if (!tokenA || !tokenB || liquidity === null || apy === null || volume === null) {
       continue
@@ -45,11 +48,13 @@ export function mapAdapterPools(
 
     pools.push({
       dex,
+      pool_id: typeof mapped.pool_id === "string" ? mapped.pool_id : undefined,
       tokenA,
       tokenB,
       liquidity_usd: liquidity,
       apy,
       volume_24h: volume,
+      last_trade_time: lastTradeTime,
       last_updated: lastUpdated
     })
   }

@@ -2,6 +2,7 @@ import { supabase } from "./supabase"
 import { Pool } from "../types/pool"
 import { toNumber } from "../utils/number"
 import { toTimestamp } from "../utils/time"
+import { isTransientError } from "../utils/retry"
 
 interface PoolRow {
   dex: string
@@ -51,6 +52,10 @@ export async function upsertPools(pools: Pool[]): Promise<void> {
     console.error(
       "[db] pools upsert blocked by RLS (code 42501). Configure Supabase policy for INSERT/UPDATE on pools, or run this backend with service_role key."
     )
+    throw modernError
+  }
+
+  if (isTransientError(modernError)) {
     throw modernError
   }
 

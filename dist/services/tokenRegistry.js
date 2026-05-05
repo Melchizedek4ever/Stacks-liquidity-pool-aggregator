@@ -4,6 +4,8 @@ exports.TOKEN_REGISTRY = void 0;
 exports.normalizeToken = normalizeToken;
 exports.normalizePoolTokens = normalizePoolTokens;
 exports.listTokens = listTokens;
+exports.getRegisteredToken = getRegisteredToken;
+exports.registerToken = registerToken;
 const tokens_1 = require("../db/tokens");
 const CACHE_TTL_MS = 5 * 60 * 1000;
 let registryCache = null;
@@ -74,13 +76,63 @@ async function listTokens() {
     return Array.from(registry.tokensById.values());
 }
 exports.TOKEN_REGISTRY = {
-    STX: {
-        id: "STX",
+    stx: {
+        id: "stx",
         address: null,
         contract: null,
         symbol: "STX",
         decimals: 6,
         isNative: true,
+        verified: true,
+        source: "registry",
+    },
+    STX: {
+        id: "stx",
+        address: null,
+        contract: null,
+        symbol: "STX",
+        decimals: 6,
+        isNative: true,
+        verified: true,
+        source: "registry",
+    },
+    sbtc: {
+        id: "sbtc",
+        address: null,
+        contract: null,
+        symbol: "sBTC",
+        decimals: 8,
+        isNative: false,
+        verified: true,
+        source: "registry",
+    },
+    sBTC: {
+        id: "sbtc",
+        address: null,
+        contract: null,
+        symbol: "sBTC",
+        decimals: 8,
+        isNative: false,
+        verified: true,
+        source: "registry",
+    },
+    usda: {
+        id: "usda",
+        address: null,
+        contract: null,
+        symbol: "USDA",
+        decimals: 6,
+        isNative: false,
+        verified: true,
+        source: "registry",
+    },
+    USDA: {
+        id: "usda",
+        address: null,
+        contract: null,
+        symbol: "USDA",
+        decimals: 6,
+        isNative: false,
         verified: true,
         source: "registry",
     },
@@ -106,3 +158,19 @@ exports.TOKEN_REGISTRY = {
         source: "registry",
     },
 };
+function getRegisteredToken(identifier) {
+    const tokenKey = normalizeKey(identifier);
+    if (!tokenKey)
+        return null;
+    return (exports.TOKEN_REGISTRY[identifier] ??
+        exports.TOKEN_REGISTRY[tokenKey] ??
+        exports.TOKEN_REGISTRY[tokenKey.toUpperCase()] ??
+        Object.values(exports.TOKEN_REGISTRY).find((token) => normalizeKey(token.id) === tokenKey || normalizeKey(token.symbol) === tokenKey) ??
+        null);
+}
+function registerToken(token) {
+    exports.TOKEN_REGISTRY[token.id] = token;
+    exports.TOKEN_REGISTRY[token.symbol] = token;
+    exports.TOKEN_REGISTRY[token.id.toLowerCase()] = token;
+    return token;
+}

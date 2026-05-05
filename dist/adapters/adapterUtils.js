@@ -31,16 +31,19 @@ function mapAdapterPools(rawPools, dex, mapper) {
         const apy = (0, number_1.toNumber)(mapped.apy);
         const volume = (0, number_1.toNumber)(mapped.volume_24h);
         const lastUpdated = (0, time_1.toTimestamp)(mapped.last_updated) ?? Date.now();
+        const lastTradeTime = (0, time_1.toTimestamp)(mapped.last_trade_time) ?? lastUpdated;
         if (!tokenA || !tokenB || liquidity === null || apy === null || volume === null) {
             continue;
         }
         pools.push({
             dex,
+            pool_id: typeof mapped.pool_id === "string" ? mapped.pool_id : undefined,
             tokenA,
             tokenB,
             liquidity_usd: liquidity,
             apy,
             volume_24h: volume,
+            last_trade_time: lastTradeTime,
             last_updated: lastUpdated
         });
     }

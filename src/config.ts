@@ -1,5 +1,12 @@
 import dotenv from 'dotenv';
-import { Config } from '../types/pool.js';
+
+interface Config {
+  supabaseUrl: string
+  supabaseKey: string
+  port: number
+  nodeEnv: string
+  updateInterval: number
+}
 
 // Load environment variables
 dotenv.config();

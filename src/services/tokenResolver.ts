@@ -1,25 +1,31 @@
-import { TOKEN_REGISTRY, CanonicalToken } from "./tokenRegistry"
+import {
+  TOKEN_REGISTRY,
+  CanonicalToken,
+  getRegisteredToken,
+  registerToken
+} from "./tokenRegistry"
 
 const tokenCache = new Map<string, CanonicalToken>()
-const unknownTokens = new Set<string>()
+const autoRegisteredTokens = new Set<string>()
 
-// Normalize raw input
 function normalizeRawToken(raw: string): string | null {
-  if (!raw) return null
+  if (typeof raw !== "string") return null
 
-  if (raw === "Stacks") return "STX"
+  let normalized = raw.trim()
+  if (!normalized) return null
 
-  if (raw.startsWith("Stacks/")) {
-    raw = raw.replace("Stacks/", "")
+  if (normalized === "Stacks") return "STX"
+
+  if (normalized.startsWith("Stacks/")) {
+    normalized = normalized.replace("Stacks/", "")
   }
 
-  return raw.trim()
+  return normalized.trim() || null
 }
 
-// Safe parser
-function safeParse(token: string) {
+function safeParse(token: string): { address: string; contract: string } | null {
   const parts = token.split(".")
-  if (parts.length !== 2) return null
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null
 
   return {
     address: parts[0],
@@ -27,93 +33,89 @@ function safeParse(token: string) {
   }
 }
 
-// Fallback resolver (creates token from contract address)
-async function resolveFromFallback(parsed: {
-  address: string
-  contract: string
-}): Promise<CanonicalToken | null> {
-  try {
-    // Try to fetch contract details
-    const res = await fetch(
-      `https://stacks-node-api.mainnet.stacks.co/v2/contracts/interface/${parsed.address}/${parsed.contract}`,
-      { signal: AbortSignal.timeout(2000) }
-    )
+function deriveSymbol(token: string): string {
+  const parsed = safeParse(token)
+  const rawSymbol = parsed?.contract ?? token
+  const cleaned = rawSymbol
+    .split("/")
+    .pop()!
+    .replace(/^wrapped[-_]/i, "")
+    .replace(/^token[-_]/i, "")
+    .replace(/[-_]?token$/i, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
 
-    if (res.ok) {
-      return {
-        id: `${parsed.address}.${parsed.contract}`,
-        address: parsed.address,
-        contract: parsed.contract,
-        symbol: parsed.contract,
-        decimals: 6,
-        isNative: false,
-        verified: true,
-        source: "fallback",
-      }
-    }
-  } catch {
-    // API call failed, but we can still accept the contract address
-  }
+  return cleaned || token
+}
 
-  // Create token from contract address even if API verification failed
+function inferDecimals(symbol: string): number {
+  const normalized = symbol.toLowerCase()
+  if (normalized.includes("btc")) return 8
+  return 6
+}
+
+function createUnverifiedToken(identifier: string): CanonicalToken {
+  const parsed = safeParse(identifier)
+  const symbol = deriveSymbol(identifier)
+
   return {
-    id: `${parsed.address}.${parsed.contract}`,
-    address: parsed.address,
-    contract: parsed.contract,
-    symbol: parsed.contract,
-    decimals: 6,
+    id: parsed ? `${parsed.address}.${parsed.contract}` : symbol.toLowerCase(),
+    address: parsed?.address ?? null,
+    contract: parsed?.contract ?? null,
+    symbol,
+    decimals: inferDecimals(symbol),
     isNative: false,
     verified: false,
     source: "fallback",
   }
 }
 
-// MAIN RESOLVER
-export async function resolveToken(raw: string): Promise<CanonicalToken | null> {
+export async function normalizeToken(raw: string): Promise<CanonicalToken | null> {
   const normalized = normalizeRawToken(raw)
   if (!normalized) return null
 
-  // Cache
-  if (tokenCache.has(normalized)) {
-    return tokenCache.get(normalized)!
+  const cacheKey = normalized.toLowerCase()
+  const cached = tokenCache.get(cacheKey)
+  if (cached) return cached
+
+  const registered = getRegisteredToken(normalized)
+  if (registered) {
+    tokenCache.set(cacheKey, registered)
+    return registered
   }
 
-  // Registry
-  if (TOKEN_REGISTRY[normalized]) {
-    const token = TOKEN_REGISTRY[normalized]
-    tokenCache.set(normalized, token)
-    return token
-  }
+  const fallback = registerToken(createUnverifiedToken(normalized))
+  tokenCache.set(cacheKey, fallback)
+  autoRegisteredTokens.add(fallback.id)
 
-  // Native STX
-  if (normalized === "STX") {
-    const token = TOKEN_REGISTRY["STX"]
-    tokenCache.set(normalized, token)
-    return token
-  }
+  console.warn(
+    JSON.stringify({
+      event: "unknown_token_auto_registered",
+      raw,
+      token_id: fallback.id,
+      symbol: fallback.symbol,
+      decimals: fallback.decimals,
+      verified: fallback.verified
+    })
+  )
 
-  // Parse contract
-  const parsed = safeParse(normalized)
-  if (!parsed) {
-    unknownTokens.add(raw)
-    return null
-  }
-
-  // Fallback
-  const fallback = await resolveFromFallback(parsed)
-
-  if (fallback) {
-    tokenCache.set(normalized, fallback)
-    return fallback
-  }
-
-  unknownTokens.add(raw)
-  return null
+  return fallback
 }
 
-// Debug helper
+export const resolveToken = normalizeToken
+
+export function isVerifiedToken(identifier?: string | null): boolean {
+  const token = identifier ? getRegisteredToken(identifier) ?? TOKEN_REGISTRY[identifier] : null
+  return token?.verified === true
+}
+
 export function logUnknownTokens() {
-  if (unknownTokens.size > 0) {
-    console.warn("Unknown tokens:", [...unknownTokens])
-  }
+  if (autoRegisteredTokens.size === 0) return
+
+  console.warn(
+    JSON.stringify({
+      event: "unknown_tokens_summary",
+      count: autoRegisteredTokens.size,
+      token_ids: [...autoRegisteredTokens]
+    })
+  )
 }

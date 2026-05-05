@@ -84,6 +84,9 @@ function normalizeBitflowPools(payload: unknown): Pool[] {
           volume_24h: safeNumber(item?.base_volume, 0),
 
           // Use last trade time if available, else now
+          last_trade_time: item?.last_trade_time
+            ? safeNumber(item.last_trade_time) * 1000
+            : Date.now(),
           last_updated: item?.last_trade_time
             ? safeNumber(item.last_trade_time) * 1000
             : Date.now(),

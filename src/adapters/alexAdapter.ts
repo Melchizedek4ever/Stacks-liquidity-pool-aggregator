@@ -17,6 +17,7 @@ export const alexAdapter: DexAdapter = {
 
     const rawPools = toPoolArray(data)
     return mapAdapterPools(rawPools, "alex", (raw) => ({
+      pool_id: raw.pool_id ?? raw.poolId ?? raw.id,
       tokenA:
         raw.tokenA ?? raw.token_a ?? raw.tokenX ?? raw.token_x ?? raw.token0,
       tokenB:
@@ -26,6 +27,8 @@ export const alexAdapter: DexAdapter = {
       apy: raw.apy ?? raw.apr ?? raw.apy_24h ?? raw.apr_24h,
       volume_24h:
         raw.volume_24h ?? raw.volume24h ?? raw.volumeUSD24h ?? raw.volumeUsd24h,
+      last_trade_time:
+        raw.last_trade_time ?? raw.lastTradeTime ?? raw.last_trade_at ?? raw.lastTradeAt,
       last_updated:
         raw.last_updated ?? raw.lastUpdated ?? raw.updated_at ?? raw.updatedAt
     }))

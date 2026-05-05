@@ -25,8 +25,13 @@ function startIndexer() {
         try {
             const pools = await (0, aggregator_1.aggregatePools)();
             const ranked = (0, ranking_1.rankPools)(pools);
-            await (0, savePools_1.savePools)(pools);
-            console.info(`Indexed ${pools.length} pools, ranked ${ranked.length}`);
+            const persisted = await (0, savePools_1.savePools)(pools);
+            console.info(JSON.stringify({
+                event: "indexer_run_complete",
+                validated: pools.length,
+                persisted,
+                ranked: ranked.length
+            }));
         }
         catch (error) {
             console.error("Indexer run failed", error);

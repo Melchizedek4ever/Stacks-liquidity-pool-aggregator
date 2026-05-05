@@ -1,6 +1,7 @@
 import { fetchPools, fetchPoolsByDex, fetchTopPoolsByApy } from "../db/pools"
 import { Pool, RankedPool } from "../types/pool"
 import { rankPools } from "./ranking"
+import { validatePool } from "../utils/validatePool"
 
 export async function getAllPools(): Promise<Pool[]> {
   return fetchPools()
@@ -16,5 +17,5 @@ export async function getTopPools(limit = 10): Promise<Pool[]> {
 
 export async function getBestPools(): Promise<RankedPool[]> {
   const pools = await fetchPools()
-  return rankPools(pools)
+  return rankPools(pools.filter(validatePool))
 }
