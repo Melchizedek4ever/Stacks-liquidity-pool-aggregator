@@ -1,5 +1,6 @@
 import { Pool, RankedPool } from "../types/pool"
 import {
+  assessPoolValidation,
   getPoolLastTradeTime,
   MAX_STALE_HOURS,
   MIN_LIQUIDITY_USD
@@ -33,19 +34,26 @@ function tokenScore(pool: Pool): number {
 export function rankPools(pools: Pool[], now = Date.now()): RankedPool[] {
   if (pools.length === 0) return []
 
-  const maxLiquidity = Math.max(...pools.map((pool) => pool.liquidity_usd), 0)
-  const maxVolume = Math.max(...pools.map((pool) => pool.volume_24h), 0)
+  const maxLiquidity = Math.max(...pools.map((pool) => pool.liquidity_usd ?? 0), 0)
+  const maxVolume = Math.max(...pools.map((pool) => pool.volume_24h ?? 0), 0)
   const staleMs = MAX_STALE_HOURS * 60 * 60 * 1000
 
   return pools
     .map((pool) => {
-      const liquidity_score = logScore(pool.liquidity_usd, maxLiquidity)
-      const volume_score = logScore(pool.volume_24h, maxVolume)
+      const validation = assessPoolValidation(pool, now)
+      const validationScore = pool.validation_score ?? validation.validation_score
+      const liquidity_score = logScore(pool.liquidity_usd ?? 0, maxLiquidity)
+      const volume_score = logScore(pool.volume_24h ?? 0, maxVolume)
       const recency_score = recencyScore(pool, now)
       const token_quality_score = tokenScore(pool)
+      const quality_multiplier = clamp01(validationScore / 100)
 
       const score = clamp01(
-        liquidity_score * volume_score * recency_score * token_quality_score
+        liquidity_score *
+          volume_score *
+          recency_score *
+          token_quality_score *
+          quality_multiplier
       )
 
       const flags = {
@@ -53,11 +61,13 @@ export function rankPools(pools: Pool[], now = Date.now()): RankedPool[] {
           (pool.tokenA_verified ?? isVerifiedToken(pool.tokenA)) &&
           (pool.tokenB_verified ?? isVerifiedToken(pool.tokenB)),
         is_stale: now - getPoolLastTradeTime(pool) > staleMs,
-        is_low_liquidity: pool.liquidity_usd < MIN_LIQUIDITY_USD
+        is_low_liquidity: (pool.liquidity_usd ?? 0) < MIN_LIQUIDITY_USD
       }
 
       return {
         ...pool,
+        validation_score: validationScore,
+        validation_flags: pool.validation_flags ?? validation.validation_flags,
         score,
         confidence: score,
         flags,

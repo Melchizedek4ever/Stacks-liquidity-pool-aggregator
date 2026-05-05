@@ -18,12 +18,12 @@ interface PoolRow {
 const mapRowToPool = (row: PoolRow): Pool => {
   return {
     dex: row.dex,
-    pool_id: row.pool_id ?? undefined,
+    pool_id: row.pool_id ?? "",
     tokenA: row.token_a,
     tokenB: row.token_b,
-    liquidity_usd: toNumber(row.liquidity_usd) ?? 0,
-    apy: toNumber(row.apy) ?? 0,
-    volume_24h: toNumber(row.volume_24h) ?? 0,
+    liquidity_usd: toNumber(row.liquidity_usd),
+    apy: toNumber(row.apy),
+    volume_24h: toNumber(row.volume_24h),
     last_updated: toTimestamp(row.last_updated) ?? Date.now()
   }
 }
@@ -33,12 +33,12 @@ export async function upsertPools(pools: Pool[]): Promise<void> {
 
   const rows = pools.map((pool) => ({
     dex: pool.dex,
-    pool_id: pool.pool_id ?? null,
+    pool_id: pool.pool_id || null,
     token_a: pool.tokenA,
     token_b: pool.tokenB,
-    liquidity_usd: pool.liquidity_usd,
-    apy: pool.apy,
-    volume_24h: pool.volume_24h,
+    liquidity_usd: pool.liquidity_usd ?? 0,
+    apy: pool.apy ?? 0,
+    volume_24h: pool.volume_24h ?? 0,
     last_updated: new Date(pool.last_updated).toISOString()
   }))
 

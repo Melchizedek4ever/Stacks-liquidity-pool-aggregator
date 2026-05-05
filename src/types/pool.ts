@@ -1,15 +1,19 @@
 export interface Pool {
   dex: string
-  pool_id?: string
+  pool_id: string
   tokenA: string
   tokenB: string
-  liquidity_usd: number
-  apy: number
-  volume_24h: number
+  liquidity_usd: number | null
+  apy: number | null
+  volume_24h: number | null
   last_trade_time?: number
   last_updated: number
-  fee_bps?: number
+  fee_bps?: number | null
   source?: "api" | "mock"
+  validation_score?: number
+  validation_flags?: string[]
+  normalization_flags?: string[]
+  raw_data?: Record<string, unknown>
   tokenA_verified?: boolean
   tokenB_verified?: boolean
   tokenA_symbol?: string

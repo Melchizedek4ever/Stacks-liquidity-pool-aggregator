@@ -2,40 +2,63 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.bitflowAdapter = void 0;
 const retry_1 = require("../utils/retry");
+const number_1 = require("../utils/number");
+const time_1 = require("../utils/time");
 const BITFLOW_PUBLIC_API_URL = process.env.BITFLOW_PUBLIC_API_URL ||
     "https://bitflow-sdk-api-gateway-7owjsmt8.uc.gateway.dev";
 const BITFLOW_API_KEY = process.env.BITFLOW_API_KEY;
 const isDev = process.env.NODE_ENV !== "production";
+const includeRawPoolData = process.env.INCLUDE_RAW_POOL_DATA === "true";
+const previewPayload = process.env.BITFLOW_PREVIEW_PAYLOAD === "true";
 function getMockPools() {
     return [
         {
             dex: "bitflow",
+            pool_id: "mock:bitflow:stx-sbtc",
             tokenA: "STX",
             tokenB: "sBTC",
             liquidity_usd: 1_250_000,
             apy: 0,
             volume_24h: 75_000,
             last_updated: Date.now(),
+            source: "mock"
         },
         {
             dex: "bitflow",
+            pool_id: "mock:bitflow:stx-usda",
             tokenA: "STX",
             tokenB: "USDA",
             liquidity_usd: 850_000,
             apy: 0,
             volume_24h: 42_000,
             last_updated: Date.now(),
-        },
+            source: "mock"
+        }
     ];
 }
-function previewPayload(label, payload) {
+function previewRawPayload(label, payload) {
+    if (!previewPayload)
+        return;
     console.log(`\n[bitflow] RAW PAYLOAD FROM ${label}`);
     console.dir(payload, { depth: 5, maxArrayLength: 20 });
     console.log(`[bitflow] END PAYLOAD ${label}\n`);
 }
-function safeNumber(value, fallback = 0) {
-    const num = Number(value);
-    return Number.isFinite(num) ? num : fallback;
+function logNormalizationSummary(stats) {
+    console.info(JSON.stringify({
+        event: "adapter_normalization_summary",
+        dex: "bitflow",
+        ...stats
+    }));
+}
+function normalizeBitflowToken(value) {
+    if (typeof value !== "string")
+        return "";
+    const trimmed = value.trim();
+    if (!trimmed)
+        return "";
+    if (trimmed === "Stacks")
+        return "STX";
+    return trimmed;
 }
 function normalizeBitflowPools(payload) {
     const candidates = [
@@ -43,38 +66,66 @@ function normalizeBitflowPools(payload) {
         payload?.data,
         payload?.pools,
         payload?.data?.pools,
-        payload?.results,
+        payload?.results
     ];
     for (const candidate of candidates) {
         if (!Array.isArray(candidate))
             continue;
-        const pools = candidate
-            .map((item) => {
-            const tokenA = item?.base_currency;
-            const tokenB = item?.target_currency;
-            if (!tokenA || !tokenB)
-                return null;
-            return {
+        const stats = {
+            rows_seen: candidate.length,
+            rows_normalized: 0,
+            missing_pool_id: 0,
+            missing_token_fields: 0,
+            invalid_liquidity_usd: 0,
+            invalid_volume_24h: 0
+        };
+        const pools = [];
+        for (const row of candidate) {
+            if (!row || typeof row !== "object")
+                continue;
+            const item = row;
+            const tokenA = normalizeBitflowToken(item.base_currency);
+            const tokenB = normalizeBitflowToken(item.target_currency);
+            const poolId = typeof item.pool_id === "string" ? item.pool_id.trim() : "";
+            const liquidity = (0, number_1.toNumber)(item.liquidity_in_usd);
+            const volume = (0, number_1.toNumber)(item.base_volume);
+            const tradeTimeSeconds = (0, number_1.toNumber)(item.last_trade_time);
+            const resolvedTime = tradeTimeSeconds
+                ? (0, time_1.toTimestamp)(tradeTimeSeconds * 1000) ?? Date.now()
+                : Date.now();
+            const normalizationFlags = [];
+            if (!poolId) {
+                stats.missing_pool_id += 1;
+                normalizationFlags.push("missing_pool_id");
+            }
+            if (!tokenA || !tokenB) {
+                stats.missing_token_fields += 1;
+                normalizationFlags.push("missing_token");
+            }
+            if (liquidity === null) {
+                stats.invalid_liquidity_usd += 1;
+                normalizationFlags.push("invalid_format:liquidity_usd");
+            }
+            if (volume === null) {
+                stats.invalid_volume_24h += 1;
+                normalizationFlags.push("invalid_format:volume_24h");
+            }
+            pools.push({
                 dex: "bitflow",
-                pool_id: item?.pool_id,
-                tokenA: String(tokenA),
-                tokenB: String(tokenB),
-                liquidity_usd: safeNumber(item?.liquidity_in_usd, 0),
-                // Bitflow ticker doesn't expose APY directly
+                pool_id: poolId,
+                tokenA,
+                tokenB,
+                liquidity_usd: liquidity,
                 apy: 0,
-                // Best available proxy for activity right now
-                volume_24h: safeNumber(item?.base_volume, 0),
-                // Use last trade time if available, else now
-                last_trade_time: item?.last_trade_time
-                    ? safeNumber(item.last_trade_time) * 1000
-                    : Date.now(),
-                last_updated: item?.last_trade_time
-                    ? safeNumber(item.last_trade_time) * 1000
-                    : Date.now(),
-            };
-        })
-            .filter((pool) => pool !== null)
-            .filter((pool) => pool.liquidity_usd > 0);
+                volume_24h: volume,
+                last_trade_time: resolvedTime,
+                last_updated: resolvedTime,
+                normalization_flags: normalizationFlags.length ? normalizationFlags : undefined,
+                raw_data: includeRawPoolData ? item : undefined
+            });
+            stats.rows_normalized += 1;
+        }
+        logNormalizationSummary(stats);
         if (pools.length > 0)
             return pools;
     }
@@ -90,14 +141,14 @@ async function fetchCandidate(url) {
     console.log(`[bitflow] requesting ${urlWithApiKey}`);
     try {
         const payload = await (0, retry_1.fetchJsonWithRetry)(urlWithApiKey);
-        previewPayload(urlWithApiKey, payload);
+        previewRawPayload(urlWithApiKey, payload);
         const pools = normalizeBitflowPools(payload);
         if (pools.length > 0) {
             console.log(`[bitflow] ${url} returned 200 OK`);
             console.log(`[bitflow] normalized ${pools.length} pools`);
             return {
                 pools,
-                meta: { url, status: 200, ok: true },
+                meta: { url, status: 200, ok: true }
             };
         }
         console.warn(`[bitflow] ${url} returned 200 but payload was not usable`);
@@ -107,8 +158,8 @@ async function fetchCandidate(url) {
                 url,
                 status: 200,
                 ok: false,
-                error: "Payload not usable for pool normalization",
-            },
+                error: "Payload not usable for pool normalization"
+            }
         };
     }
     catch (error) {
@@ -127,8 +178,8 @@ async function fetchCandidate(url) {
                 url,
                 status,
                 ok: false,
-                error: message,
-            },
+                error: message
+            }
         };
     }
 }
@@ -140,9 +191,8 @@ exports.bitflowAdapter = {
         for (const url of candidates) {
             const { pools, meta } = await fetchCandidate(url);
             attempted.push(meta);
-            if (pools.length > 0) {
+            if (pools.length > 0)
                 return pools;
-            }
         }
         if (isDev) {
             console.warn("[bitflow] all endpoint candidates failed or were unusable; using mock data fallback");
@@ -153,5 +203,5 @@ exports.bitflowAdapter = {
         console.warn("[bitflow] no pools returned from any candidate endpoint");
         console.warn(`[bitflow] attempted endpoints: ${JSON.stringify(attempted)}`);
         return [];
-    },
+    }
 };

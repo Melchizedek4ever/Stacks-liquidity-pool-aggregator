@@ -1,41 +1,82 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.aggregatePools = aggregatePools;
+const promises_1 = require("node:fs/promises");
 const adapters_1 = require("../adapters");
 const validatePool_1 = require("../utils/validatePool");
 const tokenResolver_1 = require("./tokenResolver");
+const rejectedPoolsDebugFile = process.env.REJECTED_POOLS_DEBUG_FILE?.trim();
 function logEvent(event, data) {
     console.info(JSON.stringify({ event, ...data }));
 }
-function logFilteredPool(adapterName, pool, reason) {
-    console.warn(JSON.stringify({
-        event: "pool_filtered",
-        dex: adapterName,
-        pool_id: pool.pool_id ?? "n/a",
-        reason,
-        tokenA: pool.tokenA,
-        tokenB: pool.tokenB,
-        liquidity_usd: pool.liquidity_usd,
-        volume_24h: pool.volume_24h,
-        last_trade_time: pool.last_trade_time ?? pool.last_updated
+function formatRawData(pool) {
+    if (!pool.raw_data)
+        return null;
+    return pool.raw_data;
+}
+function logRejectedPool(pool, validation) {
+    const payload = {
+        event: "pool_rejected",
+        pool_id: pool.pool_id || "n/a",
+        dex: pool.dex,
+        reasons: validation.critical_reasons.length
+            ? validation.critical_reasons
+            : validation.validation_flags,
+        validation_score: validation.validation_score,
+        raw_data: formatRawData(pool)
+    };
+    console.warn(JSON.stringify(payload));
+}
+function logDowngradedPool(pool, validation) {
+    if (validation.validation_flags.length === 0)
+        return;
+    console.info(JSON.stringify({
+        event: "pool_downgraded",
+        pool_id: pool.pool_id || "n/a",
+        dex: pool.dex,
+        reasons: validation.validation_flags,
+        validation_score: validation.validation_score,
+        raw_data: formatRawData(pool)
     }));
 }
-function createPoolId(pool) {
-    if (pool.pool_id?.trim())
-        return pool.pool_id.trim();
-    return `${pool.dex}:${pool.tokenA}:${pool.tokenB}`.toLowerCase();
+function trackReasonCounts(reasonCounts, reasons) {
+    for (const reason of reasons) {
+        reasonCounts[reason] = (reasonCounts[reason] ?? 0) + 1;
+    }
+}
+function toTopReasons(reasonCounts, limit = 10) {
+    return Object.entries(reasonCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([reason, count]) => ({ reason, count }));
+}
+async function persistRejectedDebugRecords(records) {
+    if (!rejectedPoolsDebugFile || records.length === 0)
+        return;
+    const lines = records.map((record) => JSON.stringify(record)).join("\n") + "\n";
+    await (0, promises_1.appendFile)(rejectedPoolsDebugFile, lines, { encoding: "utf8" });
 }
 async function aggregatePools() {
     const settledResults = await Promise.allSettled(adapters_1.dexAdapters.map((adapter) => adapter.fetchPools()));
     const collected = [];
+    const rejectedRecords = [];
+    const rejectionReasons = {};
     const counts = {
         fetched: 0,
-        validated: 0,
-        filtered: 0,
+        scored: 0,
+        retained: 0,
+        rejected: 0
     };
+    const adapterHealth = {};
     for (let i = 0; i < settledResults.length; i++) {
         const result = settledResults[i];
         const adapterName = adapters_1.dexAdapters[i].name;
+        adapterHealth[adapterName] = {
+            fetched: 0,
+            valid: 0,
+            rejected: 0,
+            score_total: 0
+        };
         if (result.status !== "fulfilled") {
             console.error(JSON.stringify({
                 event: "adapter_failed",
@@ -46,63 +87,104 @@ async function aggregatePools() {
         }
         const pools = result.value;
         counts.fetched += pools.length;
+        adapterHealth[adapterName].fetched += pools.length;
         logEvent("adapter_pools_fetched", {
             dex: adapterName,
             fetched: pools.length
         });
         for (const pool of pools) {
             try {
-                if (!pool.tokenA || !pool.tokenB) {
-                    counts.filtered += 1;
-                    logFilteredPool(adapterName, pool, "missing tokenA or tokenB");
-                    continue;
-                }
-                const [tokenA, tokenB] = await Promise.all([
-                    (0, tokenResolver_1.normalizeToken)(pool.tokenA),
-                    (0, tokenResolver_1.normalizeToken)(pool.tokenB)
-                ]);
-                if (!tokenA || !tokenB) {
-                    counts.filtered += 1;
-                    logFilteredPool(adapterName, pool, "missing token metadata");
-                    continue;
-                }
                 const normalizedPool = {
                     ...pool,
                     dex: pool.dex || adapterName,
-                    tokenA: tokenA.id,
-                    tokenB: tokenB.id,
-                    tokenA_symbol: tokenA.symbol,
-                    tokenB_symbol: tokenB.symbol,
-                    tokenA_verified: tokenA.verified,
-                    tokenB_verified: tokenB.verified,
-                    last_trade_time: pool.last_trade_time ?? pool.last_updated
+                    pool_id: pool.pool_id?.trim() ?? ""
                 };
-                normalizedPool.pool_id = createPoolId(normalizedPool);
-                const reason = (0, validatePool_1.getPoolValidationReason)(normalizedPool);
-                if (reason) {
-                    counts.filtered += 1;
-                    logFilteredPool(adapterName, normalizedPool, reason);
+                const [tokenA, tokenB] = await Promise.all([
+                    (0, tokenResolver_1.normalizeToken)(normalizedPool.tokenA),
+                    (0, tokenResolver_1.normalizeToken)(normalizedPool.tokenB)
+                ]);
+                if (tokenA) {
+                    normalizedPool.tokenA = tokenA.id;
+                    normalizedPool.tokenA_symbol = tokenA.symbol;
+                    normalizedPool.tokenA_verified = tokenA.verified;
+                }
+                if (tokenB) {
+                    normalizedPool.tokenB = tokenB.id;
+                    normalizedPool.tokenB_symbol = tokenB.symbol;
+                    normalizedPool.tokenB_verified = tokenB.verified;
+                }
+                const validation = (0, validatePool_1.assessPoolValidation)(normalizedPool);
+                normalizedPool.validation_score = validation.validation_score;
+                normalizedPool.validation_flags = validation.validation_flags;
+                counts.scored += 1;
+                adapterHealth[adapterName].score_total += validation.validation_score;
+                trackReasonCounts(rejectionReasons, validation.validation_flags);
+                if (!(0, validatePool_1.shouldKeepPoolForRanking)(validation)) {
+                    counts.rejected += 1;
+                    adapterHealth[adapterName].rejected += 1;
+                    logRejectedPool(normalizedPool, validation);
+                    rejectedRecords.push({
+                        event: "pool_rejected",
+                        pool_id: normalizedPool.pool_id,
+                        dex: normalizedPool.dex,
+                        reasons: validation.critical_reasons.length
+                            ? validation.critical_reasons
+                            : validation.validation_flags,
+                        validation_score: validation.validation_score,
+                        raw_data: formatRawData(normalizedPool)
+                    });
                     continue;
                 }
-                counts.validated += 1;
+                counts.retained += 1;
+                adapterHealth[adapterName].valid += 1;
+                logDowngradedPool(normalizedPool, validation);
                 collected.push(normalizedPool);
             }
             catch (err) {
-                counts.filtered += 1;
+                counts.rejected += 1;
+                adapterHealth[adapterName].rejected += 1;
                 console.error(JSON.stringify({
                     event: "pool_normalization_error",
                     dex: adapterName,
-                    pool_id: pool.pool_id ?? "n/a",
+                    pool_id: pool.pool_id || "n/a",
                     error: err instanceof Error ? err.message : String(err)
                 }));
             }
         }
     }
     (0, tokenResolver_1.logUnknownTokens)();
+    await persistRejectedDebugRecords(rejectedRecords);
+    const rejectionRate = counts.fetched > 0 ? counts.rejected / counts.fetched : 0;
     logEvent("aggregation_complete", {
         fetched: counts.fetched,
-        validated: counts.validated,
-        filtered: counts.filtered
+        scored: counts.scored,
+        retained: counts.retained,
+        rejected: counts.rejected,
+        rejection_rate: Number(rejectionRate.toFixed(4))
     });
-    return collected;
+    logEvent("aggregation_quality_summary", {
+        rejection_rate: Number(rejectionRate.toFixed(4)),
+        top_rejection_reasons: toTopReasons(rejectionReasons)
+    });
+    for (const [adapter, stats] of Object.entries(adapterHealth)) {
+        const adapterRejectionRate = stats.fetched > 0 ? stats.rejected / stats.fetched : 0;
+        const averageValidationScore = stats.valid + stats.rejected > 0
+            ? stats.score_total / (stats.valid + stats.rejected)
+            : 0;
+        logEvent("adapter_health", {
+            adapter,
+            pools_fetched: stats.fetched,
+            pools_valid: stats.valid,
+            pools_rejected: stats.rejected,
+            rejection_rate: Number(adapterRejectionRate.toFixed(4)),
+            average_validation_score: Number(averageValidationScore.toFixed(2))
+        });
+    }
+    return {
+        pools: collected,
+        fetched: counts.fetched,
+        scored: counts.scored,
+        retained: counts.retained,
+        rejected: counts.rejected
+    };
 }

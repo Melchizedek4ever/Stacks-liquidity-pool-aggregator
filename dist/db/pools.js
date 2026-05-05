@@ -11,12 +11,12 @@ const retry_1 = require("../utils/retry");
 const mapRowToPool = (row) => {
     return {
         dex: row.dex,
-        pool_id: row.pool_id ?? undefined,
+        pool_id: row.pool_id ?? "",
         tokenA: row.token_a,
         tokenB: row.token_b,
-        liquidity_usd: (0, number_1.toNumber)(row.liquidity_usd) ?? 0,
-        apy: (0, number_1.toNumber)(row.apy) ?? 0,
-        volume_24h: (0, number_1.toNumber)(row.volume_24h) ?? 0,
+        liquidity_usd: (0, number_1.toNumber)(row.liquidity_usd),
+        apy: (0, number_1.toNumber)(row.apy),
+        volume_24h: (0, number_1.toNumber)(row.volume_24h),
         last_updated: (0, time_1.toTimestamp)(row.last_updated) ?? Date.now()
     };
 };
@@ -25,12 +25,12 @@ async function upsertPools(pools) {
         return;
     const rows = pools.map((pool) => ({
         dex: pool.dex,
-        pool_id: pool.pool_id ?? null,
+        pool_id: pool.pool_id || null,
         token_a: pool.tokenA,
         token_b: pool.tokenB,
-        liquidity_usd: pool.liquidity_usd,
-        apy: pool.apy,
-        volume_24h: pool.volume_24h,
+        liquidity_usd: pool.liquidity_usd ?? 0,
+        apy: pool.apy ?? 0,
+        volume_24h: pool.volume_24h ?? 0,
         last_updated: new Date(pool.last_updated).toISOString()
     }));
     const { error: modernError } = await supabase_1.supabase

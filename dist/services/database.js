@@ -22,12 +22,12 @@ class DatabaseService {
             // Prepare pools for insertion (remove score field, use last_updated as timestamp)
             const poolsToSave = pools.map((pool) => ({
                 dex: pool.dex,
-                pool_id: pool.pool_id ?? null,
+                pool_id: pool.pool_id || null,
                 token_a: pool.tokenA,
                 token_b: pool.tokenB,
-                liquidity_usd: pool.liquidity_usd,
-                apy: pool.apy,
-                volume_24h: pool.volume_24h,
+                liquidity_usd: pool.liquidity_usd ?? 0,
+                apy: pool.apy ?? 0,
+                volume_24h: pool.volume_24h ?? 0,
                 last_updated: new Date(pool.last_updated).toISOString(),
             }));
             const { error: modernError } = await this.supabase
@@ -72,7 +72,7 @@ class DatabaseService {
             }
             return data.map((row) => ({
                 dex: row.dex,
-                pool_id: row.pool_id ?? undefined,
+                pool_id: row.pool_id ?? "",
                 tokenA: row.token_a,
                 tokenB: row.token_b,
                 liquidity_usd: row.liquidity_usd,
@@ -104,7 +104,7 @@ class DatabaseService {
             }
             return data.map((row) => ({
                 dex: row.dex,
-                pool_id: row.pool_id ?? undefined,
+                pool_id: row.pool_id ?? "",
                 tokenA: row.token_a,
                 tokenB: row.token_b,
                 liquidity_usd: row.liquidity_usd,
@@ -136,7 +136,7 @@ class DatabaseService {
             }
             return data.map((row) => ({
                 dex: row.dex,
-                pool_id: row.pool_id ?? undefined,
+                pool_id: row.pool_id ?? "",
                 tokenA: row.token_a,
                 tokenB: row.token_b,
                 liquidity_usd: row.liquidity_usd,
@@ -168,7 +168,7 @@ class DatabaseService {
             }
             return data.map((row) => ({
                 dex: row.dex,
-                pool_id: row.pool_id ?? undefined,
+                pool_id: row.pool_id ?? "",
                 tokenA: row.token_a,
                 tokenB: row.token_b,
                 liquidity_usd: row.liquidity_usd,

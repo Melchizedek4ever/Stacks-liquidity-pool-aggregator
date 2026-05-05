@@ -24,7 +24,8 @@ function choosePoolForBatch(existing, incoming) {
     const incomingTime = incoming.last_trade_time ?? incoming.last_updated;
     if (incomingTime > existingTime)
         return incoming;
-    if (incomingTime === existingTime && incoming.liquidity_usd > existing.liquidity_usd) {
+    if (incomingTime === existingTime &&
+        (incoming.liquidity_usd ?? 0) > (existing.liquidity_usd ?? 0)) {
         return incoming;
     }
     return existing;

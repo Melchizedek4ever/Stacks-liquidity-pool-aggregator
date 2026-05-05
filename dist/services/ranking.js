@@ -26,24 +26,33 @@ function tokenScore(pool) {
 function rankPools(pools, now = Date.now()) {
     if (pools.length === 0)
         return [];
-    const maxLiquidity = Math.max(...pools.map((pool) => pool.liquidity_usd), 0);
-    const maxVolume = Math.max(...pools.map((pool) => pool.volume_24h), 0);
+    const maxLiquidity = Math.max(...pools.map((pool) => pool.liquidity_usd ?? 0), 0);
+    const maxVolume = Math.max(...pools.map((pool) => pool.volume_24h ?? 0), 0);
     const staleMs = validatePool_1.MAX_STALE_HOURS * 60 * 60 * 1000;
     return pools
         .map((pool) => {
-        const liquidity_score = logScore(pool.liquidity_usd, maxLiquidity);
-        const volume_score = logScore(pool.volume_24h, maxVolume);
+        const validation = (0, validatePool_1.assessPoolValidation)(pool, now);
+        const validationScore = pool.validation_score ?? validation.validation_score;
+        const liquidity_score = logScore(pool.liquidity_usd ?? 0, maxLiquidity);
+        const volume_score = logScore(pool.volume_24h ?? 0, maxVolume);
         const recency_score = recencyScore(pool, now);
         const token_quality_score = tokenScore(pool);
-        const score = clamp01(liquidity_score * volume_score * recency_score * token_quality_score);
+        const quality_multiplier = clamp01(validationScore / 100);
+        const score = clamp01(liquidity_score *
+            volume_score *
+            recency_score *
+            token_quality_score *
+            quality_multiplier);
         const flags = {
             is_verified_pair: (pool.tokenA_verified ?? (0, tokenResolver_1.isVerifiedToken)(pool.tokenA)) &&
                 (pool.tokenB_verified ?? (0, tokenResolver_1.isVerifiedToken)(pool.tokenB)),
             is_stale: now - (0, validatePool_1.getPoolLastTradeTime)(pool) > staleMs,
-            is_low_liquidity: pool.liquidity_usd < validatePool_1.MIN_LIQUIDITY_USD
+            is_low_liquidity: (pool.liquidity_usd ?? 0) < validatePool_1.MIN_LIQUIDITY_USD
         };
         return {
             ...pool,
+            validation_score: validationScore,
+            validation_flags: pool.validation_flags ?? validation.validation_flags,
             score,
             confidence: score,
             flags,
