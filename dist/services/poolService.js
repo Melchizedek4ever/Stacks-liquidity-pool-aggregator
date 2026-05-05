@@ -18,5 +18,5 @@ async function getTopPools(limit = 10) {
 }
 async function getBestPools() {
     const pools = await (0, pools_1.fetchPools)();
-    return (0, ranking_1.rankPools)(pools).filter((pool) => (pool.validation_score ?? 0) >= validatePool_1.MIN_VALIDATION_SCORE);
+    return (0, ranking_1.rankPools)(pools).filter((pool) => pool.score >= validatePool_1.DISPLAY_MIN_SCORE);
 }

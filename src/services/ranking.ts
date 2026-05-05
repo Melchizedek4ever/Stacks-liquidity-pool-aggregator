@@ -1,59 +1,41 @@
 import { Pool, RankedPool } from "../types/pool"
-import {
-  assessPoolValidation,
-  getPoolLastTradeTime,
-  MAX_STALE_HOURS,
-  MIN_LIQUIDITY_USD
-} from "../utils/validatePool"
+import { assessPoolValidation, getPoolLastTradeTime, getQualityTier, MAX_STALE_HOURS } from "../utils/validatePool"
 import { isVerifiedToken } from "./tokenResolver"
 
-const RECENCY_HALF_LIFE_HOURS = Number(process.env.RECENCY_HALF_LIFE_HOURS ?? 6)
+const APY_NORMALIZATION_CAP = Number(process.env.APY_NORMALIZATION_CAP ?? 100)
 
-const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
+const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value))
 
 function logScore(value: number, maxValue: number): number {
   if (!Number.isFinite(value) || value <= 0 || maxValue <= 0) return 0
-  return clamp01(Math.log1p(value) / Math.log1p(maxValue))
+  const normalized = Math.log1p(value) / Math.log1p(maxValue)
+  return clamp(normalized * 100, 0, 100)
 }
 
-function recencyScore(pool: Pool, now: number): number {
-  const ageMs = Math.max(0, now - getPoolLastTradeTime(pool))
-  const ageHours = ageMs / (60 * 60 * 1000)
-  const score = Math.pow(0.5, ageHours / RECENCY_HALF_LIFE_HOURS)
-  return clamp01(score)
-}
-
-function tokenScore(pool: Pool): number {
-  const tokenAVerified = pool.tokenA_verified ?? isVerifiedToken(pool.tokenA)
-  const tokenBVerified = pool.tokenB_verified ?? isVerifiedToken(pool.tokenB)
-  const scoreA = tokenAVerified ? 1 : 0.5
-  const scoreB = tokenBVerified ? 1 : 0.5
-  return (scoreA + scoreB) / 2
+function normalizeApy(apy: number | null): number {
+  if (!Number.isFinite(apy) || apy === null || apy <= 0) return 0
+  return clamp((apy / APY_NORMALIZATION_CAP) * 100, 0, 100)
 }
 
 export function rankPools(pools: Pool[], now = Date.now()): RankedPool[] {
   if (pools.length === 0) return []
 
   const maxLiquidity = Math.max(...pools.map((pool) => pool.liquidity_usd ?? 0), 0)
-  const maxVolume = Math.max(...pools.map((pool) => pool.volume_24h ?? 0), 0)
   const staleMs = MAX_STALE_HOURS * 60 * 60 * 1000
 
   return pools
     .map((pool) => {
-      const validation = assessPoolValidation(pool, now)
-      const validationScore = pool.validation_score ?? validation.validation_score
-      const liquidity_score = logScore(pool.liquidity_usd ?? 0, maxLiquidity)
-      const volume_score = logScore(pool.volume_24h ?? 0, maxVolume)
-      const recency_score = recencyScore(pool, now)
-      const token_quality_score = tokenScore(pool)
-      const quality_multiplier = clamp01(validationScore / 100)
+      const validation = pool.validation ?? assessPoolValidation(pool, now)
+      const validationScore = pool.validation_score ?? validation.score
+      const normalizedApyScore = normalizeApy(pool.apy)
+      const liquidityScore = logScore(pool.liquidity_usd ?? 0, maxLiquidity)
 
-      const score = clamp01(
-        liquidity_score *
-          volume_score *
-          recency_score *
-          token_quality_score *
-          quality_multiplier
+      // Quality-aware weighted ranking:
+      // 60% validation quality, 25% APY attractiveness, 15% liquidity depth.
+      const finalScore = clamp(
+        validationScore * 0.6 + normalizedApyScore * 0.25 + liquidityScore * 0.15,
+        0,
+        100
       )
 
       const flags = {
@@ -61,21 +43,22 @@ export function rankPools(pools: Pool[], now = Date.now()): RankedPool[] {
           (pool.tokenA_verified ?? isVerifiedToken(pool.tokenA)) &&
           (pool.tokenB_verified ?? isVerifiedToken(pool.tokenB)),
         is_stale: now - getPoolLastTradeTime(pool) > staleMs,
-        is_low_liquidity: (pool.liquidity_usd ?? 0) < MIN_LIQUIDITY_USD
+        is_low_liquidity: (pool.liquidity_usd ?? 0) <= 0
       }
 
       return {
         ...pool,
+        validation: validation,
         validation_score: validationScore,
-        validation_flags: pool.validation_flags ?? validation.validation_flags,
-        score,
-        confidence: score,
+        validation_flags: pool.validation_flags ?? validation.flags,
+        quality_tier: getQualityTier(validationScore),
+        score: Number(finalScore.toFixed(2)),
+        confidence: Number((validationScore / 100).toFixed(2)),
         flags,
         component_scores: {
-          liquidity_score,
-          volume_score,
-          recency_score,
-          token_quality_score
+          validation_score: Number(validationScore.toFixed(2)),
+          normalized_apy: Number(normalizedApyScore.toFixed(2)),
+          liquidity_score: Number(liquidityScore.toFixed(2))
         }
       }
     })

@@ -37,9 +37,11 @@ async function run() {
         event: "diagnostic_pipeline_summary",
         complete: getEvents("aggregation_complete").at(-1) ?? null,
         quality: getEvents("aggregation_quality_summary").at(-1) ?? null,
+        qualityDistribution: getEvents("quality_distribution").at(-1) ?? null,
         rejected: getEvents("pool_rejected").length,
-        downgraded: getEvents("pool_downgraded").length,
+        qualityIssues: getEvents("pool_quality_issues").length,
         adapterHealth: getEvents("adapter_health"),
+        adapterWarnings: getEvents("adapter_warning"),
         ranked: ranked.length,
         eligible: eligible.length
     };

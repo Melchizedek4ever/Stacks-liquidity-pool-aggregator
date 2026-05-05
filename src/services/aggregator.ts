@@ -1,9 +1,9 @@
 import { appendFile } from "node:fs/promises"
 import { dexAdapters } from "../adapters"
-import { Pool } from "../types/pool"
+import { Pool, PoolQualityTier, ValidationResult } from "../types/pool"
 import {
   assessPoolValidation,
-  PoolValidationResult,
+  getQualityTier,
   shouldKeepPoolForRanking
 } from "../utils/validatePool"
 import { logUnknownTokens, normalizeToken } from "./tokenResolver"
@@ -27,7 +27,7 @@ interface RejectionLogRecord {
   pool_id: string
   dex: string
   reasons: string[]
-  validation_score: number
+  score: number
   raw_data: Record<string, unknown> | null
 }
 
@@ -50,30 +50,28 @@ function formatRawData(pool: Pool): Record<string, unknown> | null {
   return pool.raw_data
 }
 
-function logRejectedPool(pool: Pool, validation: PoolValidationResult): void {
+function logRejectedPool(pool: Pool, validation: ValidationResult): void {
   const payload: RejectionLogRecord = {
     event: "pool_rejected",
     pool_id: pool.pool_id || "n/a",
     dex: pool.dex,
-    reasons: validation.critical_reasons.length
-      ? validation.critical_reasons
-      : validation.validation_flags,
-    validation_score: validation.validation_score,
+    reasons: validation.hard_rejection_reasons ?? ["invalid_structure"],
+    score: validation.score,
     raw_data: formatRawData(pool)
   }
   console.warn(JSON.stringify(payload))
 }
 
-function logDowngradedPool(pool: Pool, validation: PoolValidationResult): void {
-  if (validation.validation_flags.length === 0) return
+function logQualityIssues(pool: Pool, validation: ValidationResult): void {
+  if (validation.flags.length === 0) return
 
   console.info(
     JSON.stringify({
-      event: "pool_downgraded",
+      event: "pool_quality_issues",
       pool_id: pool.pool_id || "n/a",
       dex: pool.dex,
-      reasons: validation.validation_flags,
-      validation_score: validation.validation_score,
+      quality_issues: validation.flags,
+      score: validation.score,
       raw_data: formatRawData(pool)
     })
   )
@@ -88,14 +86,14 @@ function trackReasonCounts(
   }
 }
 
-function toTopReasons(reasonCounts: Record<string, number>, limit = 10): Array<{
-  reason: string
+function toTopIssues(reasonCounts: Record<string, number>, limit = 10): Array<{
+  issue: string
   count: number
 }> {
   return Object.entries(reasonCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
-    .map(([reason, count]) => ({ reason, count }))
+    .map(([issue, count]) => ({ issue, count }))
 }
 
 async function persistRejectedDebugRecords(records: RejectionLogRecord[]): Promise<void> {
@@ -111,7 +109,13 @@ export async function aggregatePools(): Promise<AggregationResult> {
 
   const collected: Pool[] = []
   const rejectedRecords: RejectionLogRecord[] = []
-  const rejectionReasons: Record<string, number> = {}
+  const qualityIssueCounts: Record<string, number> = {}
+  const qualityDistribution: Record<PoolQualityTier, number> = {
+    high: 0,
+    medium: 0,
+    low: 0,
+    junk: 0
+  }
   const counts: AggregationCounts = {
     fetched: 0,
     scored: 0,
@@ -150,6 +154,15 @@ export async function aggregatePools(): Promise<AggregationResult> {
       dex: adapterName,
       fetched: pools.length
     })
+    if (pools.length === 0) {
+      console.warn(
+        JSON.stringify({
+          event: "adapter_warning",
+          adapter: adapterName,
+          message: "No pools fetched — possible API failure"
+        })
+      )
+    }
 
     for (const pool of pools) {
       try {
@@ -177,12 +190,16 @@ export async function aggregatePools(): Promise<AggregationResult> {
         }
 
         const validation = assessPoolValidation(normalizedPool)
-        normalizedPool.validation_score = validation.validation_score
-        normalizedPool.validation_flags = validation.validation_flags
+        const qualityTier = getQualityTier(validation.score)
+        normalizedPool.validation = validation
+        normalizedPool.validation_score = validation.score
+        normalizedPool.validation_flags = validation.flags
+        normalizedPool.quality_tier = qualityTier
 
         counts.scored += 1
-        adapterHealth[adapterName].score_total += validation.validation_score
-        trackReasonCounts(rejectionReasons, validation.validation_flags)
+        adapterHealth[adapterName].score_total += validation.score
+        trackReasonCounts(qualityIssueCounts, validation.flags)
+        qualityDistribution[qualityTier] += 1
 
         if (!shouldKeepPoolForRanking(validation)) {
           counts.rejected += 1
@@ -192,10 +209,8 @@ export async function aggregatePools(): Promise<AggregationResult> {
             event: "pool_rejected",
             pool_id: normalizedPool.pool_id,
             dex: normalizedPool.dex,
-            reasons: validation.critical_reasons.length
-              ? validation.critical_reasons
-              : validation.validation_flags,
-            validation_score: validation.validation_score,
+            reasons: validation.hard_rejection_reasons ?? ["invalid_structure"],
+            score: validation.score,
             raw_data: formatRawData(normalizedPool)
           })
           continue
@@ -203,7 +218,7 @@ export async function aggregatePools(): Promise<AggregationResult> {
 
         counts.retained += 1
         adapterHealth[adapterName].valid += 1
-        logDowngradedPool(normalizedPool, validation)
+        logQualityIssues(normalizedPool, validation)
         collected.push(normalizedPool)
       } catch (err) {
         counts.rejected += 1
@@ -234,7 +249,31 @@ export async function aggregatePools(): Promise<AggregationResult> {
 
   logEvent("aggregation_quality_summary", {
     rejection_rate: Number(rejectionRate.toFixed(4)),
-    top_rejection_reasons: toTopReasons(rejectionReasons)
+    top_quality_issues: toTopIssues(qualityIssueCounts),
+    low_liquidity_pct:
+      counts.scored > 0
+        ? Number((((qualityIssueCounts.low_liquidity ?? 0) / counts.scored) * 100).toFixed(2))
+        : 0,
+    stale_data_pct:
+      counts.scored > 0
+        ? Number((((qualityIssueCounts.stale_data ?? 0) / counts.scored) * 100).toFixed(2))
+        : 0,
+    average_validation_score:
+      counts.scored > 0
+        ? Number(
+            (
+              Object.values(adapterHealth).reduce((acc, stats) => acc + stats.score_total, 0) /
+              counts.scored
+            ).toFixed(2)
+          )
+        : 0
+  })
+
+  logEvent("quality_distribution", {
+    high: qualityDistribution.high,
+    medium: qualityDistribution.medium,
+    low: qualityDistribution.low,
+    junk: qualityDistribution.junk
   })
 
   for (const [adapter, stats] of Object.entries(adapterHealth)) {

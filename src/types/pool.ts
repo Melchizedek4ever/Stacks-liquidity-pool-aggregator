@@ -1,3 +1,12 @@
+export type PoolQualityTier = "high" | "medium" | "low" | "junk"
+
+export type ValidationResult = {
+  score: number
+  flags: string[]
+  is_rejected: boolean
+  hard_rejection_reasons?: string[]
+}
+
 export interface Pool {
   dex: string
   pool_id: string
@@ -12,6 +21,8 @@ export interface Pool {
   source?: "api" | "mock"
   validation_score?: number
   validation_flags?: string[]
+  validation?: ValidationResult
+  quality_tier?: PoolQualityTier
   normalization_flags?: string[]
   raw_data?: Record<string, unknown>
   tokenA_verified?: boolean
@@ -31,9 +42,8 @@ export interface RankedPool extends Pool {
   confidence: number
   flags: PoolQualityFlags
   component_scores: {
+    validation_score: number
+    normalized_apy: number
     liquidity_score: number
-    volume_score: number
-    recency_score: number
-    token_quality_score: number
   }
 }

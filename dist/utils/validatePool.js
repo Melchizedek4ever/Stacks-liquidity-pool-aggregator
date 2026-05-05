@@ -1,10 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MIN_VALIDATION_SCORE = exports.MAX_STALE_HOURS = exports.MIN_VOLUME_24H_USD = exports.MIN_LIQUIDITY_USD = void 0;
+exports.DISPLAY_MIN_SCORE = exports.MIN_VALIDATION_SCORE = exports.MAX_STALE_HOURS = exports.MIN_VOLUME_24H_USD = exports.MIN_LIQUIDITY_USD = void 0;
 exports.getPoolLastTradeTime = getPoolLastTradeTime;
+exports.getQualityTier = getQualityTier;
 exports.assessPoolValidation = assessPoolValidation;
 exports.shouldKeepPoolForRanking = shouldKeepPoolForRanking;
-exports.shouldKeepPoolByScore = shouldKeepPoolByScore;
+exports.shouldDisplayPool = shouldDisplayPool;
 exports.getPoolValidationReason = getPoolValidationReason;
 exports.validatePool = validatePool;
 const numberFromEnv = (name, fallback) => {
@@ -16,25 +17,36 @@ exports.MIN_LIQUIDITY_USD = numberFromEnv("MIN_LIQUIDITY_USD", qualityMode === "
 exports.MIN_VOLUME_24H_USD = numberFromEnv("MIN_VOLUME_24H_USD", 100);
 exports.MAX_STALE_HOURS = numberFromEnv("MAX_STALE_HOURS", 24);
 exports.MIN_VALIDATION_SCORE = numberFromEnv("MIN_VALIDATION_SCORE", 50);
+exports.DISPLAY_MIN_SCORE = numberFromEnv("DISPLAY_MIN_SCORE", 65);
 const maxStaleMs = exports.MAX_STALE_HOURS * 60 * 60 * 1000;
 const clampScore = (value) => Math.max(0, Math.min(100, Math.round(value)));
-function getPoolLastTradeTime(pool) {
-    return pool.last_trade_time ?? pool.last_updated;
-}
 function isFiniteNumber(value) {
     return typeof value === "number" && Number.isFinite(value);
 }
+function getPoolLastTradeTime(pool) {
+    return pool.last_trade_time ?? pool.last_updated;
+}
+function getQualityTier(score) {
+    if (score >= 80)
+        return "high";
+    if (score >= 65)
+        return "medium";
+    if (score >= 50)
+        return "low";
+    return "junk";
+}
 function assessPoolValidation(pool, now = Date.now()) {
-    const flags = new Set(pool.normalization_flags ?? []);
-    const criticalReasons = [];
+    const flags = new Set();
+    const hardRejectionReasons = [];
     let score = 100;
     if (!pool.tokenA || !pool.tokenB) {
-        flags.add("missing_token");
-        criticalReasons.push("missing_token");
+        hardRejectionReasons.push("missing_token");
     }
     if (!pool.pool_id?.trim()) {
-        flags.add("invalid_pool_id");
-        criticalReasons.push("invalid_pool_id");
+        hardRejectionReasons.push("invalid_pool_id");
+    }
+    if (!isFiniteNumber(pool.last_updated)) {
+        hardRejectionReasons.push("invalid_structure:last_updated");
     }
     if (pool.apy === null || !isFiniteNumber(pool.apy)) {
         flags.add("missing_apy");
@@ -42,7 +54,7 @@ function assessPoolValidation(pool, now = Date.now()) {
     }
     if (pool.liquidity_usd === null || !isFiniteNumber(pool.liquidity_usd)) {
         flags.add("invalid_format:liquidity_usd");
-        score -= 30;
+        score -= 25;
     }
     else if (pool.liquidity_usd < exports.MIN_LIQUIDITY_USD) {
         flags.add("low_liquidity");
@@ -50,45 +62,43 @@ function assessPoolValidation(pool, now = Date.now()) {
     }
     if (pool.volume_24h === null || !isFiniteNumber(pool.volume_24h)) {
         flags.add("invalid_format:volume_24h");
-        score -= 20;
+        score -= 15;
     }
     else if (pool.volume_24h < exports.MIN_VOLUME_24H_USD) {
         flags.add("low_volume");
         score -= 15;
     }
-    if (!isFiniteNumber(pool.last_updated)) {
-        flags.add("invalid_format:last_updated");
-        score -= 30;
-    }
     const lastTradeTime = getPoolLastTradeTime(pool);
     if (!isFiniteNumber(lastTradeTime)) {
         flags.add("invalid_format:last_trade_time");
-        score -= 20;
+        score -= 10;
     }
     else if (now - lastTradeTime > maxStaleMs) {
         flags.add("stale_data");
         score -= 15;
     }
     return {
-        validation_score: clampScore(score),
-        validation_flags: [...flags],
-        critical_reasons: criticalReasons,
-        is_critical_failure: criticalReasons.length > 0
+        score: clampScore(score),
+        flags: [...flags],
+        is_rejected: hardRejectionReasons.length > 0,
+        hard_rejection_reasons: hardRejectionReasons.length ? hardRejectionReasons : undefined
     };
 }
-function shouldKeepPoolForRanking(result) {
-    return !result.is_critical_failure;
+function shouldKeepPoolForRanking(validation) {
+    return !validation.is_rejected;
 }
-function shouldKeepPoolByScore(result, minScore = exports.MIN_VALIDATION_SCORE) {
-    return !result.is_critical_failure && result.validation_score >= minScore;
+function shouldDisplayPool(score) {
+    return score >= exports.DISPLAY_MIN_SCORE;
 }
-// Compatibility helpers used by legacy call-sites.
+// Legacy compatibility helpers.
 function getPoolValidationReason(pool, now = Date.now()) {
     const result = assessPoolValidation(pool, now);
-    if (result.critical_reasons.length > 0)
-        return result.critical_reasons.join(",");
-    return result.validation_flags[0] ?? null;
+    if (result.is_rejected) {
+        return result.hard_rejection_reasons?.join(",") ?? "rejected";
+    }
+    return result.flags[0] ?? null;
 }
 function validatePool(pool) {
-    return shouldKeepPoolByScore(assessPoolValidation(pool));
+    const result = assessPoolValidation(pool);
+    return !result.is_rejected && result.score >= exports.MIN_VALIDATION_SCORE;
 }

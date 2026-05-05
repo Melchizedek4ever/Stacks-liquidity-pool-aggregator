@@ -15,6 +15,7 @@ const toPoolResponse = (pool) => ({
     volume_24h: pool.volume_24h,
     validation_score: pool.validation_score,
     validation_flags: pool.validation_flags,
+    quality_tier: pool.quality_tier,
     normalization_flags: pool.normalization_flags,
     last_trade_time: pool.last_trade_time,
     last_updated: pool.last_updated

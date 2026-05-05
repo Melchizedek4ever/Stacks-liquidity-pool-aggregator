@@ -19,23 +19,21 @@ function logRejectedPool(pool, validation) {
         event: "pool_rejected",
         pool_id: pool.pool_id || "n/a",
         dex: pool.dex,
-        reasons: validation.critical_reasons.length
-            ? validation.critical_reasons
-            : validation.validation_flags,
-        validation_score: validation.validation_score,
+        reasons: validation.hard_rejection_reasons ?? ["invalid_structure"],
+        score: validation.score,
         raw_data: formatRawData(pool)
     };
     console.warn(JSON.stringify(payload));
 }
-function logDowngradedPool(pool, validation) {
-    if (validation.validation_flags.length === 0)
+function logQualityIssues(pool, validation) {
+    if (validation.flags.length === 0)
         return;
     console.info(JSON.stringify({
-        event: "pool_downgraded",
+        event: "pool_quality_issues",
         pool_id: pool.pool_id || "n/a",
         dex: pool.dex,
-        reasons: validation.validation_flags,
-        validation_score: validation.validation_score,
+        quality_issues: validation.flags,
+        score: validation.score,
         raw_data: formatRawData(pool)
     }));
 }
@@ -44,11 +42,11 @@ function trackReasonCounts(reasonCounts, reasons) {
         reasonCounts[reason] = (reasonCounts[reason] ?? 0) + 1;
     }
 }
-function toTopReasons(reasonCounts, limit = 10) {
+function toTopIssues(reasonCounts, limit = 10) {
     return Object.entries(reasonCounts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, limit)
-        .map(([reason, count]) => ({ reason, count }));
+        .map(([issue, count]) => ({ issue, count }));
 }
 async function persistRejectedDebugRecords(records) {
     if (!rejectedPoolsDebugFile || records.length === 0)
@@ -60,7 +58,13 @@ async function aggregatePools() {
     const settledResults = await Promise.allSettled(adapters_1.dexAdapters.map((adapter) => adapter.fetchPools()));
     const collected = [];
     const rejectedRecords = [];
-    const rejectionReasons = {};
+    const qualityIssueCounts = {};
+    const qualityDistribution = {
+        high: 0,
+        medium: 0,
+        low: 0,
+        junk: 0
+    };
     const counts = {
         fetched: 0,
         scored: 0,
@@ -92,6 +96,13 @@ async function aggregatePools() {
             dex: adapterName,
             fetched: pools.length
         });
+        if (pools.length === 0) {
+            console.warn(JSON.stringify({
+                event: "adapter_warning",
+                adapter: adapterName,
+                message: "No pools fetched — possible API failure"
+            }));
+        }
         for (const pool of pools) {
             try {
                 const normalizedPool = {
@@ -114,11 +125,15 @@ async function aggregatePools() {
                     normalizedPool.tokenB_verified = tokenB.verified;
                 }
                 const validation = (0, validatePool_1.assessPoolValidation)(normalizedPool);
-                normalizedPool.validation_score = validation.validation_score;
-                normalizedPool.validation_flags = validation.validation_flags;
+                const qualityTier = (0, validatePool_1.getQualityTier)(validation.score);
+                normalizedPool.validation = validation;
+                normalizedPool.validation_score = validation.score;
+                normalizedPool.validation_flags = validation.flags;
+                normalizedPool.quality_tier = qualityTier;
                 counts.scored += 1;
-                adapterHealth[adapterName].score_total += validation.validation_score;
-                trackReasonCounts(rejectionReasons, validation.validation_flags);
+                adapterHealth[adapterName].score_total += validation.score;
+                trackReasonCounts(qualityIssueCounts, validation.flags);
+                qualityDistribution[qualityTier] += 1;
                 if (!(0, validatePool_1.shouldKeepPoolForRanking)(validation)) {
                     counts.rejected += 1;
                     adapterHealth[adapterName].rejected += 1;
@@ -127,17 +142,15 @@ async function aggregatePools() {
                         event: "pool_rejected",
                         pool_id: normalizedPool.pool_id,
                         dex: normalizedPool.dex,
-                        reasons: validation.critical_reasons.length
-                            ? validation.critical_reasons
-                            : validation.validation_flags,
-                        validation_score: validation.validation_score,
+                        reasons: validation.hard_rejection_reasons ?? ["invalid_structure"],
+                        score: validation.score,
                         raw_data: formatRawData(normalizedPool)
                     });
                     continue;
                 }
                 counts.retained += 1;
                 adapterHealth[adapterName].valid += 1;
-                logDowngradedPool(normalizedPool, validation);
+                logQualityIssues(normalizedPool, validation);
                 collected.push(normalizedPool);
             }
             catch (err) {
@@ -164,7 +177,23 @@ async function aggregatePools() {
     });
     logEvent("aggregation_quality_summary", {
         rejection_rate: Number(rejectionRate.toFixed(4)),
-        top_rejection_reasons: toTopReasons(rejectionReasons)
+        top_quality_issues: toTopIssues(qualityIssueCounts),
+        low_liquidity_pct: counts.scored > 0
+            ? Number((((qualityIssueCounts.low_liquidity ?? 0) / counts.scored) * 100).toFixed(2))
+            : 0,
+        stale_data_pct: counts.scored > 0
+            ? Number((((qualityIssueCounts.stale_data ?? 0) / counts.scored) * 100).toFixed(2))
+            : 0,
+        average_validation_score: counts.scored > 0
+            ? Number((Object.values(adapterHealth).reduce((acc, stats) => acc + stats.score_total, 0) /
+                counts.scored).toFixed(2))
+            : 0
+    });
+    logEvent("quality_distribution", {
+        high: qualityDistribution.high,
+        medium: qualityDistribution.medium,
+        low: qualityDistribution.low,
+        junk: qualityDistribution.junk
     });
     for (const [adapter, stats] of Object.entries(adapterHealth)) {
         const adapterRejectionRate = stats.fetched > 0 ? stats.rejected / stats.fetched : 0;
