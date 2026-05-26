@@ -4,6 +4,7 @@ exports.TOKEN_REGISTRY = void 0;
 exports.normalizeToken = normalizeToken;
 exports.normalizePoolTokens = normalizePoolTokens;
 exports.listTokens = listTokens;
+exports.lookupTokenFromDb = lookupTokenFromDb;
 exports.getRegisteredToken = getRegisteredToken;
 exports.registerToken = registerToken;
 const tokens_1 = require("../db/tokens");
@@ -158,6 +159,36 @@ exports.TOKEN_REGISTRY = {
         source: "registry",
     },
 };
+function tokenRecordToCanonical(record) {
+    const parts = record.id.split(".");
+    const hasAddress = parts.length === 2 && Boolean(parts[0]) && Boolean(parts[1]);
+    return {
+        id: record.id,
+        address: hasAddress ? parts[0] : null,
+        contract: hasAddress ? parts[1] : null,
+        symbol: record.symbol,
+        decimals: record.decimals,
+        isNative: record.id === "stx",
+        verified: record.verified ?? false,
+        source: "registry",
+    };
+}
+async function lookupTokenFromDb(identifier) {
+    try {
+        const registry = await getRegistry();
+        const key = normalizeKey(identifier);
+        if (!key)
+            return null;
+        const byId = registry.tokensById.get(key);
+        if (byId)
+            return tokenRecordToCanonical(byId);
+        return null;
+    }
+    catch {
+        // DB failure must not break the pipeline — return null and let caller fall through.
+        return null;
+    }
+}
 function getRegisteredToken(identifier) {
     const tokenKey = normalizeKey(identifier);
     if (!tokenKey)

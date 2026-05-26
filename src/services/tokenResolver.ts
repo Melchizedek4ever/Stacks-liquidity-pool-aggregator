@@ -2,6 +2,7 @@ import {
   TOKEN_REGISTRY,
   CanonicalToken,
   getRegisteredToken,
+  lookupTokenFromDb,
   registerToken
 } from "./tokenRegistry"
 
@@ -81,6 +82,13 @@ export async function normalizeToken(raw: string): Promise<CanonicalToken | null
   if (registered) {
     tokenCache.set(cacheKey, registered)
     return registered
+  }
+
+  // Check DB registry before resorting to a synthetic unverified token.
+  const fromDb = await lookupTokenFromDb(normalized)
+  if (fromDb) {
+    tokenCache.set(cacheKey, fromDb)
+    return fromDb
   }
 
   const fallback = registerToken(createUnverifiedToken(normalized))

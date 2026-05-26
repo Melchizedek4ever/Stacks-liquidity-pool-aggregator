@@ -18,7 +18,7 @@ function getMockPools() {
             tokenA: "STX",
             tokenB: "sBTC",
             liquidity_usd: 1_250_000,
-            apy: 0,
+            apy: null,
             volume_24h: 75_000,
             last_updated: Date.now(),
             source: "mock"
@@ -29,7 +29,7 @@ function getMockPools() {
             tokenA: "STX",
             tokenB: "USDA",
             liquidity_usd: 850_000,
-            apy: 0,
+            apy: null,
             volume_24h: 42_000,
             last_updated: Date.now(),
             source: "mock"
@@ -116,7 +116,7 @@ function normalizeBitflowPools(payload) {
                 tokenA,
                 tokenB,
                 liquidity_usd: liquidity,
-                apy: 0,
+                apy: null,
                 volume_24h: volume,
                 last_trade_time: resolvedTime,
                 last_updated: resolvedTime,

@@ -195,6 +195,37 @@ export const TOKEN_REGISTRY: Record<string, CanonicalToken> = {
   },
 }
 
+function tokenRecordToCanonical(record: TokenRecord): CanonicalToken {
+  const parts = record.id.split(".")
+  const hasAddress = parts.length === 2 && Boolean(parts[0]) && Boolean(parts[1])
+  return {
+    id: record.id,
+    address: hasAddress ? parts[0] : null,
+    contract: hasAddress ? parts[1] : null,
+    symbol: record.symbol,
+    decimals: record.decimals,
+    isNative: record.id === "stx",
+    verified: record.verified ?? false,
+    source: "registry",
+  }
+}
+
+export async function lookupTokenFromDb(identifier: string): Promise<CanonicalToken | null> {
+  try {
+    const registry = await getRegistry()
+    const key = normalizeKey(identifier)
+    if (!key) return null
+
+    const byId = registry.tokensById.get(key)
+    if (byId) return tokenRecordToCanonical(byId)
+
+    return null
+  } catch {
+    // DB failure must not break the pipeline — return null and let caller fall through.
+    return null
+  }
+}
+
 export function getRegisteredToken(identifier?: string | null): CanonicalToken | null {
   const tokenKey = normalizeKey(identifier)
   if (!tokenKey) return null

@@ -17,6 +17,11 @@ async function getTopPools(limit = 10) {
     return (0, pools_1.fetchTopPoolsByApy)(limit);
 }
 async function getBestPools() {
-    const pools = await (0, pools_1.fetchPools)();
-    return (0, ranking_1.rankPools)(pools).filter((pool) => pool.score >= validatePool_1.DISPLAY_MIN_SCORE);
+    const displayed = await (0, pools_1.fetchDisplayedPools)();
+    // First run or pre-migration: fall back to re-ranking all pools.
+    if (displayed.length === 0) {
+        const all = await (0, pools_1.fetchPools)();
+        return (0, ranking_1.rankPools)(all).filter((pool) => pool.score >= validatePool_1.DISPLAY_MIN_SCORE);
+    }
+    return displayed;
 }

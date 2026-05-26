@@ -74,6 +74,12 @@ async function normalizeToken(raw) {
         tokenCache.set(cacheKey, registered);
         return registered;
     }
+    // Check DB registry before resorting to a synthetic unverified token.
+    const fromDb = await (0, tokenRegistry_1.lookupTokenFromDb)(normalized);
+    if (fromDb) {
+        tokenCache.set(cacheKey, fromDb);
+        return fromDb;
+    }
     const fallback = (0, tokenRegistry_1.registerToken)(createUnverifiedToken(normalized));
     tokenCache.set(cacheKey, fallback);
     autoRegisteredTokens.add(fallback.id);

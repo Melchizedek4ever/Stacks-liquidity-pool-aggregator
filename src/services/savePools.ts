@@ -1,5 +1,5 @@
 import { upsertPools } from "../db/pools"
-import { Pool } from "../types/pool"
+import { RankedPool } from "../types/pool"
 import { withRetry } from "../utils/retry"
 
 function getErrorMessage(error: unknown): string {
@@ -11,12 +11,12 @@ function getErrorMessage(error: unknown): string {
   return String(error)
 }
 
-function createPoolId(pool: Pool): string {
+function createPoolId(pool: RankedPool): string {
   if (pool.pool_id?.trim()) return pool.pool_id.trim()
   return `${pool.dex}:${pool.tokenA}:${pool.tokenB}`.toLowerCase()
 }
 
-function choosePoolForBatch(existing: Pool, incoming: Pool): Pool {
+function choosePoolForBatch(existing: RankedPool, incoming: RankedPool): RankedPool {
   const existingTime = existing.last_trade_time ?? existing.last_updated
   const incomingTime = incoming.last_trade_time ?? incoming.last_updated
 
@@ -30,28 +30,23 @@ function choosePoolForBatch(existing: Pool, incoming: Pool): Pool {
   return existing
 }
 
-export function deduplicatePoolsByPoolId(pools: Pool[]): Pool[] {
+export function deduplicatePoolsByPoolId(pools: RankedPool[]): RankedPool[] {
   const poolMap = pools.reduce((map, pool) => {
-    const normalizedPool = {
-      ...pool,
-      pool_id: createPoolId(pool)
-    }
+    const normalizedPool = { ...pool, pool_id: createPoolId(pool) }
     const existing = map.get(normalizedPool.pool_id)
-
     map.set(
       normalizedPool.pool_id,
       existing ? choosePoolForBatch(existing, normalizedPool) : normalizedPool
     )
-
     return map
-  }, new Map<string, Pool>())
+  }, new Map<string, RankedPool>())
 
   return Array.from(poolMap.values())
 }
 
 export interface SavePoolsInput {
-  eligible: Pool[]
-  displayed: Pool[]
+  eligible: RankedPool[]
+  displayed: RankedPool[]
 }
 
 export interface SavePoolsResult {
@@ -67,58 +62,50 @@ export async function savePools(input: SavePoolsInput): Promise<SavePoolsResult>
     return { eligible_persisted: 0, displayed_persisted: 0 }
   }
 
-  const dedupedEligible = deduplicatePoolsByPoolId(eligible)
-  const eligibleDuplicateCount = eligible.length - dedupedEligible.length
-  const dedupedDisplayed = deduplicatePoolsByPoolId(displayed)
-  const displayedDuplicateCount = displayed.length - dedupedDisplayed.length
+  const deduped = deduplicatePoolsByPoolId(eligible)
+  const duplicateCount = eligible.length - deduped.length
+
+  // Mark each pool with its display status in one pass — no second upsert needed.
+  const displayedIds = new Set(displayed.map((p) => createPoolId(p)))
+  const batch = deduped.map((pool) => ({
+    ...pool,
+    is_displayed: displayedIds.has(pool.pool_id),
+  }))
 
   console.info(
     JSON.stringify({
       event: "pools_deduplicated",
       eligible_input_count: eligible.length,
-      eligible_duplicate_count: eligibleDuplicateCount,
-      eligible_output_count: dedupedEligible.length,
-      displayed_input_count: displayed.length,
-      displayed_duplicate_count: displayedDuplicateCount,
-      displayed_output_count: dedupedDisplayed.length
+      eligible_duplicate_count: duplicateCount,
+      eligible_output_count: deduped.length,
+      displayed_count: displayedIds.size,
     })
   )
 
   try {
-    await withRetry(() => upsertPools(dedupedEligible), {
-      operationName: "supabase eligible pools upsert",
+    await withRetry(() => upsertPools(batch), {
+      operationName: "supabase pools upsert",
       retries: 4,
       minDelayMs: 1_000,
-      maxDelayMs: 8_000
+      maxDelayMs: 8_000,
     })
 
-    if (dedupedDisplayed.length > 0) {
-      await withRetry(() => upsertPools(dedupedDisplayed), {
-        operationName: "supabase displayed pools upsert",
-        retries: 4,
-        minDelayMs: 1_000,
-        maxDelayMs: 8_000
-      })
-    }
+    const displayedPersisted = batch.filter((p) => p.is_displayed).length
 
     console.info(
       JSON.stringify({
         event: "pools_persisted",
-        eligible_persisted: dedupedEligible.length,
-        displayed_persisted: dedupedDisplayed.length
+        eligible_persisted: batch.length,
+        displayed_persisted: displayedPersisted,
       })
     )
-    return {
-      eligible_persisted: dedupedEligible.length,
-      displayed_persisted: dedupedDisplayed.length
-    }
+    return { eligible_persisted: batch.length, displayed_persisted: displayedPersisted }
   } catch (error) {
     console.error(
       JSON.stringify({
         event: "pools_persist_failed",
-        attempted_eligible: dedupedEligible.length,
-        attempted_displayed: dedupedDisplayed.length,
-        error: getErrorMessage(error)
+        attempted: batch.length,
+        error: getErrorMessage(error),
       })
     )
     return { eligible_persisted: 0, displayed_persisted: 0 }

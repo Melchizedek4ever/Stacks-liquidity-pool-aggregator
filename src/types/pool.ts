@@ -29,6 +29,7 @@ export interface Pool {
   tokenB_verified?: boolean
   tokenA_symbol?: string
   tokenB_symbol?: string
+  is_displayed?: boolean
 }
 
 export interface PoolQualityFlags {
@@ -41,7 +42,7 @@ export interface RankedPool extends Pool {
   score: number
   confidence: number
   flags: PoolQualityFlags
-  component_scores: {
+  component_scores?: {
     validation_score: number
     normalized_apy: number
     liquidity_score: number
